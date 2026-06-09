@@ -1,0 +1,48 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement class="cas-screen">
+
+        <ui:VisualElement class="cas-breadcrumb">
+            <ui:Label name="settings-back" text="CAS Settings" class="cas-breadcrumb__txt" />
+            <ui:VisualElement class="cas-chevron cas-chevron--sm" style="margin-left: 6px; margin-right: 6px;" />
+            <ui:Label text="Redirect" class="cas-breadcrumb__cur" />
+        </ui:VisualElement>
+
+        <ui:VisualElement class="cas-body">
+
+            <ui:Label text="CAS SDK Settings" class="cas-h2" />
+            <ui:Label text="All core settings are managed by CAS SDK." class="cas-sub" style="margin-bottom: 16px;" />
+
+            <ui:VisualElement class="cas-row" style="align-items: flex-start;">
+                <ui:VisualElement style="flex-grow: 1; margin-right: 18px;">
+                    <ui:Button name="settings-open" class="cas-btn cas-btn--soft" style="width: 100%; flex-direction: row; justify-content: space-between; padding-top: 9px; padding-bottom: 9px; padding-left: 12px; padding-right: 12px;">
+                        <ui:VisualElement class="cas-row">
+                            <ui:VisualElement class="cas-icon cas-icon--settings" style="width: 14px; height: 14px; margin-right: 8px;" />
+                            <ui:Label text="Open CAS Settings Window" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="cas-icon cas-icon--external" style="width: 12px; height: 12px;" />
+                    </ui:Button>
+                </ui:VisualElement>
+                <ui:VisualElement class="cas-caslogo-card">
+                    <ui:Label text="CAS" class="cas-caslogo-card__main" />
+                    <ui:Label text="CleverAdsSolutions" class="cas-caslogo-card__sub" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <ui:VisualElement style="margin-top: 18px;">
+                <ui:Label text="Here you can configure:" class="cas-section-title" />
+                <ui:Label text="•  CAS ID (if required)" class="cas-bullet" />
+                <ui:Label text="•  Ad formats" class="cas-bullet" />
+                <ui:Label text="•  Networks" class="cas-bullet" />
+                <ui:Label text="•  Mediation settings" class="cas-bullet" />
+                <ui:Label text="•  More…" class="cas-bullet" />
+            </ui:VisualElement>
+
+            <ui:VisualElement class="cas-spacer" />
+
+            <ui:VisualElement class="cas-tip">
+                <ui:Label name="settings-tip-text" class="cas-tip__text" />
+            </ui:VisualElement>
+
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

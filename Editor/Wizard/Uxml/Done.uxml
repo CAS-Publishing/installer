@@ -1,0 +1,18 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement class="cas-screen">
+        <ui:VisualElement class="cas-body cas-done">
+
+            <ui:VisualElement class="cas-icon cas-icon--big-check" style="width: 104px; height: 104px; margin-top: 32px;" />
+
+            <ui:Label text="All Done!" class="cas-h2--big" />
+            <ui:Label text="CAS Hub has been successfully installed and configured in your project." class="cas-sub cas-sub--center" />
+
+            <ui:VisualElement style="margin-top: 30px; width: 100%;">
+                <ui:Button name="done-settings" text="Configure project" class="cas-btn cas-btn--soft cas-btn--block" style="margin-bottom: 10px;" />
+                <ui:Button name="done-docs" text="View Documentation" class="cas-btn cas-btn--soft cas-btn--block" style="margin-bottom: 10px;" />
+                <ui:Button name="done-close" text="Finish" class="cas-btn cas-btn--primary cas-btn--block" />
+            </ui:VisualElement>
+
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

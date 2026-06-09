@@ -1,0 +1,149 @@
+using System;
+using System.IO;
+using PSV.Installer.Catalog;
+using PSV.Installer.Migrator;
+using UnityEditor;
+using UnityEditor.PackageManager;
+using UnityEngine;
+
+namespace PSV.Installer
+{
+    internal static class MetadataAutoInstall
+    {
+        private const string LogPrefix = "[PSV Installer]";
+        private const string PsvRegistryName = "PSV Game Studio";
+        private const string PsvRegistryUrl = CatalogUpdater.PsvRegistryRoot;
+        private const string RequiredScope = "com.psvgamestudio";
+        private const string InstallAttemptedKey = "PSV.Installer.MetadataInstallAttemptedThisSession";
+
+        /// <summary>
+        /// Called by Bootstrap when <see cref="CatalogLoader.Load"/> reports NotInstalled (metadata
+        /// package not yet registered in this project). Ensures the PSV scoped registry is present in
+        /// Packages/manifest.json, then queries Verdaccio for the latest metadata version and
+        /// fires a UPM Client.Add. Fire-and-forget — Unity will reimport and Bootstrap will
+        /// succeed on the next domain reload. Idempotent across multiple calls within the same
+        /// domain reload.
+        /// </summary>
+        /// <param name="force">A manual trigger (wizard Refresh / open) clears the once-per-session
+        /// failure throttle so the install is actually re-attempted now.</param>
+        public static void Run(bool force = false)
+        {
+            // Already registered → nothing to do.
+            if (IsMetadataInstalled()) return;
+
+            if (force) SessionState.SetBool(InstallAttemptedKey, false);
+
+            // The once-per-session guard exists ONLY to stop re-probing the registry on every domain
+            // reload when offline/auth fails — it is set only on a genuine failure (below), never up
+            // front, so a successful install or a remove+reinstall in the same session isn't blocked
+            // until an editor restart.
+            if (SessionState.GetBool(InstallAttemptedKey, false))
+                return;
+
+            Debug.Log($"{LogPrefix} metadata package not detected; installing…");
+
+            // Step 1 — ensure scoped registry in manifest.json.
+            if (!EnsureScopedRegistry())
+            {
+                SessionState.SetBool(InstallAttemptedKey, true); // failed — throttle until restart
+                return; // warning already logged inside
+            }
+
+            // Step 2 — query Verdaccio for latest version, then install.
+            CatalogUpdater.CheckRemoteLatestVersion(
+                onSuccess: version =>
+                {
+                    Debug.Log($"{LogPrefix} Installing metadata package: {CatalogLoader.MetadataPackageName}@{version}…");
+                    try
+                    {
+                        // Success path: do NOT set the guard — once installed, IsMetadataInstalled()
+                        // short-circuits future calls; if it's later removed we want to retry.
+                        CatalogUpdater.TrackInstall(
+                            CatalogUpdater.InstallVersion(version), "Metadata");
+                    }
+                    catch (Exception e)
+                    {
+                        SessionState.SetBool(InstallAttemptedKey, true); // failed — throttle until restart
+                        Debug.LogWarning($"{LogPrefix} Client.Add failed: {e.Message}");
+                    }
+                },
+                onFailure: err =>
+                {
+                    SessionState.SetBool(InstallAttemptedKey, true); // failed — throttle until restart
+                    Debug.LogWarning(
+                        $"{LogPrefix} Could not query registry for metadata version. " +
+                        $"Will retry after an editor restart. Reason: {err}");
+                });
+        }
+
+        // -----------------------------------------------------------------------
+        //  Helpers
+        // -----------------------------------------------------------------------
+
+        private static bool IsMetadataInstalled()
+        {
+            try
+            {
+                foreach (var pkg in UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages())
+                {
+                    if (pkg.name == CatalogLoader.MetadataPackageName)
+                        return true;
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"{LogPrefix} Could not enumerate registered packages: {e.Message}");
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Delegates to <see cref="ManifestWriter.ApplyActions"/> to ensure the PSV
+        /// scoped registry is registered in Packages/manifest.json.
+        /// <see cref="ManifestWriter"/> is idempotent: if the registry and scope are
+        /// already present it does not rewrite the file.
+        /// Returns false on any I/O error (warning already logged).
+        /// </summary>
+        private static bool EnsureScopedRegistry()
+        {
+            var manifestPath = GetManifestPath();
+            if (manifestPath == null)
+            {
+                Debug.LogWarning($"{LogPrefix} Could not locate Packages/manifest.json. Aborting bootstrap.");
+                return false;
+            }
+
+            try
+            {
+                // AddScopedRegistry is idempotent in ManifestWriter: if the URL already
+                // exists with the required scope, nothing is written.
+                ManifestWriter.ApplyActions(manifestPath, new MigrationAction[]
+                {
+                    new AddScopedRegistry(PsvRegistryName, PsvRegistryUrl, RequiredScope),
+                });
+                return true;
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"{LogPrefix} Failed to ensure scoped registry in manifest.json: {e.Message}");
+                return false;
+            }
+        }
+
+        private static string GetManifestPath()
+        {
+            // Application.dataPath is "<project>/Assets". manifest.json is one level up under "Packages/".
+            try
+            {
+                var projectRoot = Path.GetDirectoryName(UnityEngine.Application.dataPath);
+                if (projectRoot == null) return null;
+                var path = Path.Combine(projectRoot, "Packages", "manifest.json");
+                return File.Exists(path) ? path : null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+    }
+}

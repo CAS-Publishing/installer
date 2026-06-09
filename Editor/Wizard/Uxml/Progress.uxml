@@ -1,0 +1,24 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement class="cas-screen">
+        <ui:VisualElement class="cas-body">
+
+            <ui:Label text="Installation Progress" class="cas-h2" />
+
+            <ui:VisualElement name="progress-steps" style="margin-top: 16px;" />
+
+            <ui:VisualElement class="cas-spacer" />
+
+            <ui:VisualElement style="padding-top: 16px;">
+                <ui:VisualElement class="cas-progress">
+                    <ui:VisualElement name="progress-fill" class="cas-progress__fill" />
+                </ui:VisualElement>
+                <ui:Label name="progress-pct" text="56%" class="cas-progress__pct" />
+            </ui:VisualElement>
+
+        </ui:VisualElement>
+
+        <ui:VisualElement class="cas-footer" style="justify-content: center;">
+            <ui:Button name="progress-cancel" text="Cancel" class="cas-btn" style="min-width: 100px;" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

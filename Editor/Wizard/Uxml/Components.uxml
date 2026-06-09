@@ -1,0 +1,39 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement class="cas-screen">
+        <ui:VisualElement class="cas-body">
+
+            <ui:Label text="Components Overview" class="cas-h2" />
+            <ui:Label text="Check the status of required components." class="cas-sub" style="margin-bottom: 14px;" />
+
+            <ui:VisualElement class="cas-table__head">
+                <ui:Label text="Component" class="cas-th cas-col-comp" />
+                <ui:Label text="Status" class="cas-th cas-col-status" />
+                <ui:Label text="Action" class="cas-th cas-col-action" />
+            </ui:VisualElement>
+
+            <ui:ScrollView name="components-scroll" class="cas-table-scroll" mode="Vertical">
+                <ui:VisualElement name="components-rows" class="cas-table" />
+            </ui:ScrollView>
+
+            <ui:VisualElement class="cas-legend" style="margin-top: 12px;">
+                <ui:VisualElement class="cas-legend__item">
+                    <ui:VisualElement class="cas-dot cas-dot--green" />
+                    <ui:Label text="Installed" class="cas-legend__label" />
+                </ui:VisualElement>
+                <ui:VisualElement class="cas-legend__item">
+                    <ui:VisualElement class="cas-dot cas-dot--yellow" />
+                    <ui:Label text="Update available" class="cas-legend__label" />
+                </ui:VisualElement>
+                <ui:VisualElement class="cas-legend__item">
+                    <ui:VisualElement class="cas-dot cas-dot--red" />
+                    <ui:Label text="Not Installed" class="cas-legend__label" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+        </ui:VisualElement>
+
+        <ui:VisualElement class="cas-footer">
+            <ui:Button name="components-refresh" text="↻  Refresh" class="cas-btn cas-btn--soft cas-btn--sm" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

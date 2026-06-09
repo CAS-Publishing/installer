@@ -1,0 +1,18 @@
+{
+    "name": "PSV.Installer.Wizard.Editor",
+    "rootNamespace": "PSV.Installer.Wizard",
+    "references": [
+        "PSV.Installer.Editor"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,23 @@
+{
+  "name": "com.psvgamestudio.installer",
+  "version": "0.0.1-preview.15",
+  "displayName": "PSV Game Studio Installer",
+  "description": "One-click Unity installer for the PSV / CAS publishing SDK. Scans the project, migrates legacy installs to UPM, manages registries, and keeps installed packages up to date. Editor-only.",
+  "unity": "2022.3",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "author": {
+    "name": "PSV Game Studio"
+  },
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.2.1"
+  },
+  "publishConfig": {
+    "registry": "https://npm.psvgamestudio.com/"
+  },
+  "keywords": [
+    "psv",
+    "installer",
+    "editor",
+    "package-manager"
+  ]
+}
