@@ -85,6 +85,11 @@
 .cas-btn--sm { padding-top: 3px; padding-bottom: 3px; padding-left: 14px; padding-right: 14px; font-size: 11px; }
 .cas-btn--block { width: 100%; padding-top: 10px; padding-bottom: 10px; }
 
+/* Platform segments (Welcome): one CAS-ID field whose value is swapped by Android/iOS. */
+.cas-seg { flex-direction: row; }
+.cas-seg__item { margin-right: 6px; opacity: 0.6; }
+.cas-seg__item--active { background-color: #3B6AE0; border-color: #1D3E9A; color: #FFFFFF; opacity: 1; }
+
 /* ── Inputs ──────────────────────────────────────────────────────────────── */
 .cas-input {
     background-color: #2A2A2A;
@@ -284,9 +289,9 @@
     border-bottom-color: #2A2A2A;
 }
 .cas-row-grid--alt { background-color: #303030; }
-.cas-col-comp { flex-grow: 1.5; flex-basis: 0; flex-shrink: 1; flex-direction: row; align-items: center; }
+.cas-col-comp { flex-grow: 1.2; flex-basis: 0; flex-shrink: 1; flex-direction: row; align-items: center; }
 .cas-col-status { flex-grow: 1; flex-basis: 0; flex-shrink: 1; }
-.cas-col-action { flex-grow: 1; flex-basis: 0; flex-shrink: 1; flex-direction: row; }
+.cas-col-action { flex-grow: 1.6; flex-basis: 0; flex-shrink: 1; flex-direction: row; }
 .cas-comp__logo { width: 16px; height: 16px; margin-left: 8px; margin-right: 8px; flex-shrink: 0; }
 .cas-comp__name { color: #E5E5E5; font-size: 11px; }
 .cas-comp__sub { color: #7E7E7E; font-size: 10px; }

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using PSV.Installer.Catalog;
+using PSV.Installer.Common;
 using PSV.Installer.Migrator;
 using PSV.Installer.Scanner;
 
@@ -29,7 +30,7 @@ namespace PSV.Installer.Tests
             var report = ScanReportFactory.With(
                 new[] { ScanReportFactory.Pkg("com.x", PackageState.NotInstalled) });
 
-            var plan = MigrationPlanner.Plan(catalog, report, new Sel("com.x"), out _);
+            var plan = MigrationPlanner.Plan(catalog, report, new Sel("com.x"), InstallMethod.Upm, out _);
             Assert.IsFalse(plan.OfType<AddPackage>().Any(), "empty version must not yield an AddPackage");
         }
 
@@ -40,7 +41,7 @@ namespace PSV.Installer.Tests
             var report = ScanReportFactory.With(
                 new[] { ScanReportFactory.Pkg("com.x", PackageState.NotInstalled) });
 
-            var plan = MigrationPlanner.Plan(catalog, report, new Sel("com.x"), out _);
+            var plan = MigrationPlanner.Plan(catalog, report, new Sel("com.x"), InstallMethod.Upm, out _);
             var add = plan.OfType<AddPackage>().Single();
             Assert.AreEqual("1.2.3", add.Version);
         }
@@ -58,7 +59,7 @@ namespace PSV.Installer.Tests
                 },
                 new MigrationGroup("legacy.base", new[] { "com.a", "com.b" }));
 
-            var plan = MigrationPlanner.Plan(catalog, report, new Sel("com.a", "com.b"), out var warnings);
+            var plan = MigrationPlanner.Plan(catalog, report, new Sel("com.a", "com.b"), InstallMethod.Upm, out var warnings);
             Assert.IsTrue(plan.OfType<RemovePackage>().Any(r => r.Id == "legacy.base"));
             Assert.IsFalse(warnings.OfType<PartialSplitWarning>().Any());
         }
@@ -76,7 +77,7 @@ namespace PSV.Installer.Tests
                 new MigrationGroup("legacy.base", new[] { "com.a", "com.b" }));
 
             // Only com.a selected.
-            var plan = MigrationPlanner.Plan(catalog, report, new Sel("com.a"), out var warnings);
+            var plan = MigrationPlanner.Plan(catalog, report, new Sel("com.a"), InstallMethod.Upm, out var warnings);
 
             Assert.IsFalse(plan.OfType<RemovePackage>().Any(r => r.Id == "legacy.base"),
                 "must NOT remove legacy when its full replacement set isn't selected");

@@ -7,6 +7,10 @@ namespace PSV.Installer.Wizard
         public string Id => "components";
         public VisualElement Root { get; }
 
+        // Equal width for the action + Remove buttons so they line up in fixed slots across rows.
+        // Sized to the longest label ("Up to date").
+        private const float ActionButtonWidth = 84f;
+
         private bool _bound;
         private readonly VisualElement _rowsHost;
 
@@ -108,20 +112,49 @@ namespace PSV.Installer.Wizard
             statusCol.Add(statusLabel);
 
             // Action column — real Install/Update via the migrator (behind a confirm dialog);
-            // disabled when there's nothing to do.
+            // disabled when there's nothing to do. Fixed-width slots, left-aligned: the action
+            // button always occupies the left slot (so a lone Install lines up under the
+            // Update/Up-to-date of other rows, not under their Remove), Remove the right slot.
             var actionCol = new VisualElement();
             actionCol.AddToClassList("cas-col-action");
+
             var btn = new Button(() =>
             {
-                if (WizardActions.Apply(c.Id, c.DisplayName))
-                    Rebuild();
+                // Out-of-UPM components migrate (delete the manual copy, then UPM-install);
+                // everything else is a normal Install/Update/Fix via the migrator.
+                var changed = c.OutsideUpm
+                    ? WizardActions.MigrateExternal(c.Id, c.DisplayName)
+                    : WizardActions.Apply(c.Id, c.DisplayName);
+                if (changed) Rebuild();
             })
             { text = c.ActionText };
             btn.AddToClassList("cas-btn");
             btn.AddToClassList("cas-btn--sm");
             btn.AddToClassList(ActionVariantClass(c.ActionVariant));
             btn.SetEnabled(c.Actionable);
+            btn.style.width = ActionButtonWidth;
+            btn.style.flexShrink = 0;
             actionCol.Add(btn);
+
+            // Remove is offered for any UPM-installed component — saves manual UPM editing and acts
+            // as a recovery path for a botched install. Writes manifest.json (reversible via git).
+            // Not shown for out-of-UPM copies: there's no manifest entry to remove (use Migrate).
+            if (c.Installed && !c.OutsideUpm)
+            {
+                var remove = new Button(() =>
+                {
+                    if (WizardActions.Remove(c.Id, c.DisplayName))
+                        Rebuild();
+                })
+                { text = "Remove" };
+                remove.AddToClassList("cas-btn");
+                remove.AddToClassList("cas-btn--sm");
+                remove.AddToClassList("cas-btn--ghost");
+                remove.style.width = ActionButtonWidth;
+                remove.style.flexShrink = 0;
+                remove.style.marginLeft = 6;
+                actionCol.Add(remove);
+            }
 
             row.Add(comp);
             row.Add(statusCol);

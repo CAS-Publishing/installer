@@ -56,6 +56,13 @@ namespace PSV.Installer.Catalog
         /// <summary>Optional post-install configuration requirements (per platform), used to
         /// render the Setup readiness checklist. Absent → no config to verify.</summary>
         [JsonProperty("config")]             public List<ConfigRequirement> Config;
+
+        /// <summary>
+        /// Optional git-install chain for this component. When the Git method is chosen, the
+        /// installer writes one git-URL dependency per entry here (top-level + transitive),
+        /// with no scoped registry. Absent → git method falls back to UPM for this component.
+        /// </summary>
+        [JsonProperty("git")]                public GitInstall Git;
     }
 
     public sealed class ExternalRecord
@@ -65,6 +72,23 @@ namespace PSV.Installer.Catalog
         [JsonProperty("registry")]           public string Registry;
         [JsonProperty("scopes")]             public List<string> Scopes;
         [JsonProperty("category")]           public string Category;
+
+        /// <summary>
+        /// Optional markers identifying a NON-UPM (e.g. .unitypackage) copy of this SDK in the
+        /// project: substrings matched (case-insensitive) against asmdef name/rootNamespace and
+        /// precompiled DLL file names found under <c>Assets/</c>. Used to detect a manual install
+        /// so the hub doesn't offer Install (which would duplicate it). Match assembly/namespace,
+        /// not folder names, so a leftover settings folder is not a false positive.
+        /// Absent → no out-of-UPM detection for this external.
+        /// </summary>
+        [JsonProperty("assetMarkers")]       public List<string> AssetMarkers;
+
+        /// <summary>
+        /// Optional git-install chain for this component. When the Git method is chosen, the
+        /// installer writes one git-URL dependency per entry here (top-level + transitive),
+        /// with no scoped registry. Absent → git method falls back to UPM for this component.
+        /// </summary>
+        [JsonProperty("git")]                public GitInstall Git;
 
         /// <summary>
         /// Recommended version string used by the migrator when generating
@@ -147,5 +171,22 @@ namespace PSV.Installer.Catalog
         /// </summary>
         [JsonProperty("reason")]
         public string Reason;
+    }
+
+    /// <summary>The flat set of packages to write as git-URL dependencies for one component.</summary>
+    public sealed class GitInstall
+    {
+        [JsonProperty("packages")] public List<GitPackage> Packages;
+    }
+
+    /// <summary>One git-URL dependency: id plus repo URL plus tag.</summary>
+    public sealed class GitPackage
+    {
+        [JsonProperty("id")]  public string Id;
+        [JsonProperty("url")] public string Url;
+        [JsonProperty("tag")] public string Tag;
+
+        /// <summary>The manifest dependency value: <c>url#tag</c>.</summary>
+        public string Spec => string.IsNullOrEmpty(Tag) ? Url : $"{Url}#{Tag}";
     }
 }

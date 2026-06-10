@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using PSV.Installer.Catalog;
+using PSV.Installer.Common;
 using PSV.Installer.Scanner;
 
 namespace PSV.Installer.Migrator
@@ -77,6 +78,7 @@ namespace PSV.Installer.Migrator
             PackageCatalog catalog,
             ScanReport report,
             ISelectionSet selection,
+            InstallMethod method,
             out IReadOnlyList<PlannerWarning> warnings)
         {
             var warningList = new List<PlannerWarning>();
@@ -92,6 +94,7 @@ namespace PSV.Installer.Migrator
             var removes   = new List<RemovePackage>();
             var regAdds   = new List<MigrationAction>();   // AddScopedRegistry | AddScopeToRegistry
             var pkgAdds   = new List<MigrationAction>();   // AddPackage | UpdatePackageVersion
+            var gitAdds = new List<MigrationAction>(); // AddGitPackage entries (git method)
 
             // Deduplication: track which ids have already produced a RemovePackage.
             var removedIds = new HashSet<string>();
@@ -120,6 +123,9 @@ namespace PSV.Installer.Migrator
                     if (!selection.IsSelected(result.Id)) continue;
 
                     packageRecordById.TryGetValue(result.Id, out var record);
+                    if (method == InstallMethod.Git && TryPlanGit(record?.Git, gitAdds, warningList, result.Id,
+                            warnOnFallback: result.State != PackageState.UpmCurrent))
+                        continue; // git chain emitted; skip UPM planning for this component
                     var target = selection.GetTarget(result.Id);
                     PlanForPackage(result, record, target, backups, removes, pkgAdds, removedIds);
                 }
@@ -134,6 +140,9 @@ namespace PSV.Installer.Migrator
                     if (!selection.IsSelected(result.Id)) continue;
 
                     externalRecordById.TryGetValue(result.Id, out var record);
+                    if (method == InstallMethod.Git && TryPlanGit(record?.Git, gitAdds, warningList, result.Id,
+                            warnOnFallback: result.State != ExternalState.UpmCurrent))
+                        continue; // git chain emitted; skip UPM planning for this component
                     var target = selection.GetTarget(result.Id);
                     PlanForExternal(result, record, catalog, target, regAdds, pkgAdds, warningList);
                 }
@@ -198,12 +207,13 @@ namespace PSV.Installer.Migrator
 
             // ── Assemble in required order ────────────────────────────────────
             var actions = new List<MigrationAction>(
-                backups.Count + removes.Count + regAdds.Count + pkgAdds.Count);
+                backups.Count + removes.Count + regAdds.Count + pkgAdds.Count + gitAdds.Count);
 
             actions.AddRange(backups);
             actions.AddRange(removes);
             actions.AddRange(regAdds);
             actions.AddRange(pkgAdds);
+            actions.AddRange(gitAdds);
 
             warnings = warningList;
             return actions;
@@ -292,6 +302,12 @@ namespace PSV.Installer.Migrator
             {
                 case ExternalState.UpmCurrent:
                     // Nothing to do.
+                    break;
+
+                case ExternalState.InstalledOutsideUpm:
+                    // A non-UPM (.unitypackage) copy is already present — adding the UPM package
+                    // would duplicate it. Skip. Migration to UPM is an explicit, separate action
+                    // (WizardActions.MigrateExternal), never part of an Install/Express plan.
                     break;
 
                 case ExternalState.NotInstalled:
@@ -396,6 +412,29 @@ namespace PSV.Installer.Migrator
 
             // Key not in map — treat the raw value as the URL (direct URL in catalog).
             return key;
+        }
+
+        /// <summary>
+        /// Emits an <see cref="AddGitPackage"/> for each entry in the component's git chain. Returns
+        /// true when git planning handled the component (a git block was present). Returns false when
+        /// there is no git block, so the caller falls back to UPM planning — adding a warning only
+        /// when <paramref name="warnOnFallback"/> (i.e. the component actually needs installing, so
+        /// an already up-to-date component with no git block doesn't spam the confirm dialog).
+        /// </summary>
+        private static bool TryPlanGit(GitInstall git, List<MigrationAction> gitAdds,
+            List<PlannerWarning> warnings, string componentId, bool warnOnFallback)
+        {
+            if (git?.Packages == null || git.Packages.Count == 0)
+            {
+                if (warnOnFallback)
+                    warnings.Add(new PlannerWarning(componentId,
+                        $"No git source for '{componentId}' — falling back to UPM for this component."));
+                return false;
+            }
+            foreach (var p in git.Packages)
+                if (p != null && !string.IsNullOrEmpty(p.Id) && !string.IsNullOrEmpty(p.Url))
+                    gitAdds.Add(new AddGitPackage(p.Id, p.Spec));
+            return true;
         }
     }
 }

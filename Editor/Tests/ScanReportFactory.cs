@@ -32,5 +32,20 @@ namespace PSV.Installer.Tests
                 null,
                 new object[] { "v", DateTime.UtcNow, packages.ToList(), new List<ExternalScanResult>(), new List<UninstallScanResult>(), groups, "hash", null },
                 null);
+
+        public static ExternalScanResult Ext(string id, ExternalState state) =>
+            (ExternalScanResult)Activator.CreateInstance(
+                typeof(ExternalScanResult),
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+                null, new object[] { id, id, state, null }, null);
+
+        public static ScanReport WithExternals(IEnumerable<ExternalScanResult> externals) =>
+            (ScanReport)Activator.CreateInstance(
+                typeof(ScanReport),
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+                null,
+                new object[] { "v", DateTime.UtcNow, new List<PackageScanResult>(), externals.ToList(),
+                    new List<UninstallScanResult>(), Array.Empty<MigrationGroup>(), "hash", null },
+                null);
     }
 }

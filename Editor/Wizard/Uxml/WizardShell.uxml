@@ -2,7 +2,6 @@
     <ui:VisualElement name="cas-window" class="cas-window">
 
         <ui:VisualElement name="cas-tabbar" class="cas-tabbar">
-            <ui:Button name="tab-welcome" text="Welcome" class="cas-tab" />
             <ui:Button name="tab-components" text="Components" class="cas-tab" />
             <ui:Button name="tab-setup" text="Configuration" class="cas-tab" />
             <ui:Button name="tab-about" text="About" class="cas-tab" />

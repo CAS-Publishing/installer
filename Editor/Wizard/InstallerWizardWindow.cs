@@ -30,8 +30,9 @@ namespace PSV.Installer.Wizard
         private const string CurrentScreenKey = "PSV.Installer.Wizard.CurrentScreen";
 
         // Screens that appear as top tabs; everything else is a full-screen flow state.
-        // Welcome is a tab so the user can always return to the first step / re-run the intro.
-        private static readonly string[] TabScreens = { "welcome", "components", "setup", "about" };
+        // Welcome + Integration are first-run-only flow screens — once set up, the user never
+        // returns to the install picker, so they are NOT tabs.
+        private static readonly string[] TabScreens = { "components", "setup", "about" };
 
         // Per-project key — EditorPrefs is machine-global, so include the project path to keep
         // the intro flag scoped to THIS project (each client project is first-run on its own).
@@ -47,7 +48,6 @@ namespace PSV.Installer.Wizard
 
         private WizardRouter _router;
         private VisualElement _tabBar;
-        private Button _tabWelcome;
         private Button _tabComponents;
         private Button _tabSetup;
         private Button _tabAbout;
@@ -69,6 +69,22 @@ namespace PSV.Installer.Wizard
             window.Show();
         }
 
+        /// <summary>
+        /// Reopens the wizard at the first-run Welcome screen, clearing the per-project intro flag.
+        /// Welcome/Integration are not tabs (you don't normally return to the install picker), so
+        /// this is the way back to redo setup — and how to reach Welcome in a project that already
+        /// passed the intro.
+        /// </summary>
+        [MenuItem("PSV Game Studio/Wizard (Restart Intro)")]
+        public static void OpenFirstRun()
+        {
+            IntroDone = false;
+            SessionState.SetString(CurrentScreenKey, "welcome"); // don't restore a previous tab
+            Open();
+            if (HasOpenInstances<InstallerWizardWindow>())
+                GetWindow<InstallerWizardWindow>()._router?.GoTo("welcome");
+        }
+
         /// <summary>Closes the window if open — used by the All Done screen's Close button.</summary>
         public static void CloseActive()
         {
@@ -87,9 +103,14 @@ namespace PSV.Installer.Wizard
             // Auto-open only on a project's first run. After the user has passed the first screen
             // (IntroDone), never pop the window automatically — surface updates via the About badge.
             if (IntroDone) return;
-            if (report.Hash == ScanReportStore.GetLastShownHash()) return;
-            ScanReportStore.SetLastShownHash(report.Hash);
+
+            // First run: always open. Record the hash only AFTER opening — previously it was set
+            // first, so an open interrupted by the install/self-delete domain reload latched the
+            // hash and suppressed every later attempt until an editor restart (the reported
+            // "hub doesn't open / only after restart"). Open() is idempotent: GetWindow focuses an
+            // existing window, so re-running on each reload is harmless.
             Open();
+            ScanReportStore.SetLastShownHash(report.Hash);
         }
 
         private void CreateGUI()
@@ -173,12 +194,10 @@ namespace PSV.Installer.Wizard
         private void BuildTabBar(VisualElement root)
         {
             _tabBar        = root.Q<VisualElement>("cas-tabbar");
-            _tabWelcome    = root.Q<Button>("tab-welcome");
             _tabComponents = root.Q<Button>("tab-components");
             _tabSetup      = root.Q<Button>("tab-setup");
             _tabAbout      = root.Q<Button>("tab-about");
 
-            if (_tabWelcome != null)    _tabWelcome.clicked    += () => _router.GoTo("welcome");
             if (_tabComponents != null) _tabComponents.clicked += () => _router.GoTo("components");
             if (_tabSetup != null)      _tabSetup.clicked      += () => _router.GoTo("setup");
             if (_tabAbout != null)      _tabAbout.clicked      += () => _router.GoTo("about");
@@ -208,7 +227,6 @@ namespace PSV.Installer.Wizard
             if (_tabBar != null)
                 _tabBar.style.display = isTab ? DisplayStyle.Flex : DisplayStyle.None;
 
-            SetTabActive(_tabWelcome, id == "welcome");
             SetTabActive(_tabComponents, id == "components");
             SetTabActive(_tabSetup, id == "setup");
             SetTabActive(_tabAbout, id == "about");
@@ -226,6 +244,10 @@ namespace PSV.Installer.Wizard
         // the window within the session reflects it without re-checking.
         private void RefreshUpdateBadge()
         {
+            // Git-installed installer: no Verdaccio version to compare against, and About shows a
+            // manual git-update instruction — so never show the "update available" badge here.
+            if (PSV.Installer.Common.InstallerSource.IsGit()) { SetBadge(false); return; }
+
             SetBadge(SessionState.GetBool(UpdateBadgeState.AvailableKey, false));
 
             if (SessionState.GetBool(UpdateBadgeState.ProbedKey, false)) return;

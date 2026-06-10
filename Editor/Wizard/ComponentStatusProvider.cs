@@ -21,6 +21,7 @@ namespace PSV.Installer.Wizard
         public string Version;       // detected version, may be null
         public bool   Actionable;    // false when nothing to do (button disabled)
         public bool   Installed;     // true when the package is present (any non-NotInstalled state)
+        public bool   OutsideUpm;    // detected via .unitypackage/manual, not UPM → action = Migrate
     }
 
     /// <summary>
@@ -132,6 +133,8 @@ namespace PSV.Installer.Wizard
                 default:
                     s.Tone = "red";    s.StatusText = "Not Installed";    s.ActionText = "Install";   s.ActionVariant = "primary"; s.Actionable = true;  break;
             }
+            if (PSV.Installer.Scanner.StateClassifier.IsGitSpec(s.Version) && s.StatusText == "Installed")
+                s.StatusText = "Installed (git)";
             return s;
         }
 
@@ -146,10 +149,15 @@ namespace PSV.Installer.Wizard
                     s.Tone = "green";  s.StatusText = "Installed";      s.ActionText = "Up to date"; s.ActionVariant = "muted";   s.Actionable = false; break;
                 case ExternalState.ScopeMissing:
                     s.Tone = "yellow"; s.StatusText = "Needs registry"; s.ActionText = "Fix";        s.ActionVariant = "warn";    s.Actionable = true;  break;
+                case ExternalState.InstalledOutsideUpm:
+                    s.Tone = "yellow"; s.StatusText = "Installed (manual)"; s.ActionText = "Migrate to UPM"; s.ActionVariant = "warn"; s.Actionable = true;
+                    s.OutsideUpm = true; break;
                 case ExternalState.NotInstalled:
                 default:
                     s.Tone = "red";    s.StatusText = "Not Installed";  s.ActionText = "Install";    s.ActionVariant = "primary"; s.Actionable = true;  break;
             }
+            if (PSV.Installer.Scanner.StateClassifier.IsGitSpec(s.Version) && s.StatusText == "Installed")
+                s.StatusText = "Installed (git)";
             return s;
         }
 

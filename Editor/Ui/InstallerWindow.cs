@@ -1,4 +1,5 @@
 using PSV.Installer.Catalog;
+using PSV.Installer.Common;
 using PSV.Installer.Migrator;
 using PSV.Installer.Scanner;
 using System;
@@ -326,7 +327,7 @@ namespace PSV.Installer.Ui
             }
 
             var selectionAdapter = new HashSetSelectionAdapter(_selected, _targets);
-            var plan = MigrationPlanner.Plan(_catalog, _report, selectionAdapter, out var warnings);
+            var plan = MigrationPlanner.Plan(_catalog, _report, selectionAdapter, InstallMethodState.Get(), out var warnings);
 
             if (plan.Count == 0)
             {
@@ -435,6 +436,9 @@ namespace PSV.Installer.Ui
                         sb.AppendLine($"  • Add package: {add.Id}@{add.Version} ({targetName})");
                         break;
                     }
+                    case AddGitPackage git:
+                        sb.AppendLine($"  • Add package (git): {git.Id} ({git.Spec})");
+                        break;
                     case UpdatePackageVersion upd:
                     {
                         var targetName = selectionAdapter.GetTarget(upd.Id) == VersionTarget.Min ? "minimum" : "recommended";

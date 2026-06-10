@@ -2,6 +2,34 @@
 
 All notable changes to this package will be documented in this file.
 
+## [0.0.1-preview.16] - 2026-06-10
+
+A large release: Welcome UX refinements, out-of-UPM detection, and two new git capabilities.
+
+- **Git install method.** A global **UPM / Git** selector on the first screen. In Git mode the
+  installer writes git-URL dependencies (clean, no scoped registry) for components that have a git
+  source in the catalog — CAS via its official git, Tenjin via our mirror. Components without a git
+  source (Firebase, unless its chain is mirrored) fall back to UPM. Detection treats a git-URL
+  dependency as "Installed (git)".
+- **Git infrastructure self-hosting.** When the installer itself is installed via a git URL, it
+  fetches the metadata catalog via git too (no scoped registry), so a fully-git client ends up with
+  zero `com.psvgamestudio` scoped registries. The infra source mirrors how the installer was
+  installed; the component method stays a separate choice. About-tab self-update shows a manual
+  git instruction in git mode.
+- **Out-of-UPM (.unitypackage) detection.** SDKs installed manually via .unitypackage are now
+  detected (by loaded-type namespaces — covers asmdef, DLL, and raw scripts) and shown as
+  "Installed (manual)" instead of being offered for a duplicate Install. A **Migrate to UPM** action
+  removes the manual copy (git-guarded) and installs the UPM version. Prevents the duplicate-package
+  breakage during auto-integration.
+- **Welcome screen** now uses a single CAS-ID field with Android/iOS tabs (many clients ship one
+  platform), empty by default (or prefilled from an existing CAS install), with **Next locked** until
+  an id is entered. CAS IDs apply immediately (no need to reopen the wizard).
+- **Components: a Remove button** on each installed component — saves manual UPM editing and is a
+  recovery path for botched installs.
+- **Reliable first-run auto-open** — the wizard no longer fails to open until an editor restart (the
+  scan-hash was latched before the window actually opened). New "Wizard (Restart Intro)" menu reopens
+  the first screen.
+
 ## [0.0.1-preview.15] - 2026-06-02
 
 - **Fixed the About tab caption clipping to "Abou".** The update badge was added as a child of the

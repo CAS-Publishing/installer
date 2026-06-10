@@ -67,6 +67,47 @@ namespace PSV.Installer.Wizard
             if (changed) AssetDatabase.SaveAssets();
         }
 
+        /// <summary>
+        /// Reads the CAS managerId already configured for a platform, or null when CAS isn't
+        /// installed, the asset/field is absent, or the slot is empty / still the placeholder.
+        /// Used to prefill the first screen when CAS was set up before the hub.
+        /// </summary>
+        public static string ReadExisting(string platform)
+        {
+            if (string.IsNullOrEmpty(platform)) return null;
+
+            var load = CatalogLoader.Load();
+            if (load.Status != CatalogLoadStatus.Ok || load.Catalog?.External == null) return null;
+
+            ExternalRecord cas = null;
+            foreach (var e in load.Catalog.External)
+                if (e != null && e.Id == CasId) { cas = e; break; }
+            if (cas?.Config == null) return null;
+
+            foreach (var req in cas.Config)
+            {
+                if (req == null || req.Kind != "settingsAssetField" || string.IsNullOrEmpty(req.Field)) continue;
+                if (!string.Equals(req.Platform, platform, System.StringComparison.OrdinalIgnoreCase)) continue;
+
+                var asset = SetupChecker.LocateAsset(req.AssetPath, req.AssetType);
+                if (asset == null) return null;
+
+                var prop = new SerializedObject(asset).FindProperty(req.Field);
+                if (prop == null) return null;
+
+                var value = prop.isArray
+                    ? (prop.arraySize > 0 ? FirstString(prop) : null)
+                    : (prop.propertyType == SerializedPropertyType.String ? prop.stringValue : null);
+
+                if (string.IsNullOrEmpty(value)) return null;
+
+                var isPlaceholder = !string.IsNullOrEmpty(req.Placeholder) &&
+                                    string.Equals(value, req.Placeholder, System.StringComparison.OrdinalIgnoreCase);
+                return isPlaceholder ? null : value;
+            }
+            return null;
+        }
+
         // managerIds is a string list — write a single-element list when the slot is empty/placeholder.
         private static bool WriteIfNeeded(SerializedProperty prop, string stored, string placeholder)
         {

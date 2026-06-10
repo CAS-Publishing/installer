@@ -12,6 +12,14 @@ namespace PSV.Installer.Catalog
     internal static class CatalogUpdater
     {
         public const string PsvRegistryRoot = "https://npm.psvgamestudio.com/";
+
+        /// <summary>
+        /// Public git mirror of the metadata catalog. Untagged → Unity resolves the repo's default
+        /// branch (main = the latest mirror release), so new packages/rules reach git clients without
+        /// an installer release (the same role the registry "latest" plays).
+        /// </summary>
+        public const string MetadataGitUrl = "https://github.com/CAS-Publishing/installer-metadata.git";
+
         private const int TimeoutSeconds = 10;
 
         // Reports the HIGHEST published version of the metadata package. Delegates to
@@ -28,6 +36,12 @@ namespace PSV.Installer.Catalog
         public static AddRequest InstallVersion(string version)
         {
             return Client.Add($"{CatalogLoader.MetadataPackageName}@{version}");
+        }
+
+        // Queues a UPM Add for the metadata package via its git mirror (no registry, no version).
+        public static AddRequest InstallGit()
+        {
+            return Client.Add(MetadataGitUrl);
         }
 
         /// <summary>

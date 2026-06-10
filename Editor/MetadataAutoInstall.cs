@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using PSV.Installer.Catalog;
+using PSV.Installer.Common;
 using PSV.Installer.Migrator;
 using UnityEditor;
 using UnityEditor.PackageManager;
@@ -39,6 +40,24 @@ namespace PSV.Installer
             // until an editor restart.
             if (SessionState.GetBool(InstallAttemptedKey, false))
                 return;
+
+            // Git-installed installer → fetch metadata over git too (no scoped registry, no Verdaccio
+            // probe). Keeps a fully-git client free of any com.psvgamestudio scoped registry.
+            if (InstallerSource.IsGit())
+            {
+                Debug.Log($"{LogPrefix} metadata not detected; installing via git mirror…");
+                try
+                {
+                    // Success: do NOT set the guard — IsMetadataInstalled() short-circuits future calls.
+                    CatalogUpdater.TrackInstall(CatalogUpdater.InstallGit(), "Metadata (git)");
+                }
+                catch (Exception e)
+                {
+                    SessionState.SetBool(InstallAttemptedKey, true); // failed — throttle until restart
+                    Debug.LogWarning($"{LogPrefix} Metadata git Client.Add failed: {e.Message}");
+                }
+                return;
+            }
 
             Debug.Log($"{LogPrefix} metadata package not detected; installing…");
 

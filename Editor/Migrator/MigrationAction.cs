@@ -47,6 +47,26 @@ namespace PSV.Installer.Migrator
     }
 
     /// <summary>
+    /// Add (or, idempotently, leave) a git-URL entry under <c>dependencies</c> in manifest.json,
+    /// e.g. <c>"com.tenjin.sdk": "https://github.com/CAS-Publishing/tenjin-sdk.git#1.15.14"</c>.
+    /// Used by the Git install method instead of a registry + version pair.
+    /// </summary>
+    public sealed class AddGitPackage : MigrationAction
+    {
+        /// <summary>UPM package id to add.</summary>
+        public string Id { get; }
+
+        /// <summary>Full git dependency spec written as the value: <c>url#tag</c>.</summary>
+        public string Spec { get; }
+
+        public AddGitPackage(string id, string spec)
+        {
+            Id   = id;
+            Spec = spec;
+        }
+    }
+
+    /// <summary>
     /// Replace the version value of an existing <c>dependencies</c> entry in manifest.json.
     /// </summary>
     public sealed class UpdatePackageVersion : MigrationAction

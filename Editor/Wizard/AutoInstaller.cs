@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Text;
 using PSV.Installer.Catalog;
+using PSV.Installer.Common;
 using PSV.Installer.Migrator;
 using PSV.Installer.Scanner;
 using UnityEditor;
@@ -65,7 +66,7 @@ namespace PSV.Installer.Wizard
 
             var report = ProjectScanner.Scan(load.Catalog);
             var plan = MigrationPlanner.Plan(
-                load.Catalog, report, new IdSetSelection(ComponentStatusProvider.DefaultIds), out var warnings);
+                load.Catalog, report, new IdSetSelection(ComponentStatusProvider.DefaultIds), InstallMethodState.Get(), out var warnings);
 
             if (plan.Count == 0)
             {
@@ -96,7 +97,7 @@ namespace PSV.Installer.Wizard
                 return new ApplyResult(false, 0, new[] { "Catalog unavailable." });
 
             var report = ProjectScanner.Scan(load.Catalog);
-            var plan = MigrationPlanner.Plan(load.Catalog, report, new IdSetSelection(new[] { id }), out _);
+            var plan = MigrationPlanner.Plan(load.Catalog, report, new IdSetSelection(new[] { id }), InstallMethodState.Get(), out _);
             return new MigrationRunner().Apply(plan);
         }
 
@@ -112,6 +113,7 @@ namespace PSV.Installer.Wizard
                 switch (a)
                 {
                     case AddPackage add:           sb.AppendLine($"  • Add {add.Id}@{add.Version}"); break;
+                    case AddGitPackage git:        sb.AppendLine($"  • Add {git.Id} (git: {git.Spec})"); break;
                     case UpdatePackageVersion upd: sb.AppendLine($"  • Update {upd.Id} → {upd.Version}"); break;
                     case RemovePackage rem:        sb.AppendLine($"  • Remove {rem.Id}"); break;
                     case AddScopedRegistry reg:    sb.AppendLine($"  • Register scope {reg.Scope} ({reg.Url})"); break;

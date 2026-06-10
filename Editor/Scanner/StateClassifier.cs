@@ -10,6 +10,15 @@ namespace PSV.Installer.Scanner
     /// </summary>
     internal static class StateClassifier
     {
+        // ── Git-URL helper ───────────────────────────────────────────────────
+
+        /// <summary>True when a manifest dependency value is a git URL rather than a semver version.</summary>
+        public static bool IsGitSpec(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return false;
+            return value.Contains("://") || value.Contains(".git") || value.StartsWith("git@");
+        }
+
         // ── PackageRecord classification ─────────────────────────────────────
 
         /// <summary>
@@ -94,6 +103,10 @@ namespace PSV.Installer.Scanner
             // ── Canonical UPM states ──────────────────────────────────────────
             if (hasCanonical)
             {
+                if (IsGitSpec(canonicalVersion))
+                    return new PackageScanResult(record.Id, record.DisplayName,
+                        PackageState.UpmCurrent, canonicalVersion, null, EmptyPaths);
+
                 var state = ClassifyVersion(canonicalVersion, record.MinVersion, record.RecommendedVersion);
                 return new PackageScanResult(
                     record.Id, record.DisplayName,
@@ -113,19 +126,37 @@ namespace PSV.Installer.Scanner
         // ── ExternalRecord classification ────────────────────────────────────
 
         /// <summary>
-        /// Classifies an <see cref="ExternalRecord"/> against manifest data.
+        /// Classifies an <see cref="ExternalRecord"/> against manifest data. When the external is
+        /// absent from the manifest but a non-UPM copy was detected on disk
+        /// (<paramref name="detectedOutsideUpm"/>), reports
+        /// <see cref="ExternalState.InstalledOutsideUpm"/> instead of NotInstalled so the hub
+        /// won't offer an Install that duplicates it.
         /// </summary>
-        public static ExternalScanResult Classify(ExternalRecord record, ManifestData manifest)
+        public static ExternalScanResult Classify(
+            ExternalRecord record,
+            ManifestData manifest,
+            bool detectedOutsideUpm = false)
         {
             var deps = manifest.Dependencies;
 
             if (!deps.TryGetValue(record.Id, out var version))
             {
+                // Manifest is the source of truth for UPM; if a non-UPM copy is on disk, surface it.
+                if (detectedOutsideUpm)
+                    return new ExternalScanResult(
+                        record.Id, record.DisplayName,
+                        ExternalState.InstalledOutsideUpm,
+                        null);
+
                 return new ExternalScanResult(
                     record.Id, record.DisplayName,
                     ExternalState.NotInstalled,
                     null);
             }
+
+            // A git-URL install has no scoped registry by design — treat presence as installed.
+            if (IsGitSpec(version))
+                return new ExternalScanResult(record.Id, record.DisplayName, ExternalState.UpmCurrent, version);
 
             // Found in dependencies — check if any required scope is registered.
             bool anyScope = false;

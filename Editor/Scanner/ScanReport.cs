@@ -84,6 +84,13 @@ namespace PSV.Installer.Scanner
 
         /// <summary>Found in manifest dependencies but none of the required scopes are registered.</summary>
         ScopeMissing,
+
+        /// <summary>
+        /// Not in manifest, but a non-UPM copy (e.g. .unitypackage) was detected in Assets/ via
+        /// the catalog's <c>assetMarkers</c>. Installing via UPM would duplicate it, so the hub
+        /// blocks Install and offers Migrate-to-UPM instead.
+        /// </summary>
+        InstalledOutsideUpm,
     }
 
     // ── Per-package results ──────────────────────────────────────────────────

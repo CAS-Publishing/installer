@@ -1,4 +1,5 @@
 using PSV.Installer.Catalog;
+using PSV.Installer.Common;
 using UnityEditor.PackageManager;
 using UnityEngine.UIElements;
 
@@ -78,6 +79,15 @@ namespace PSV.Installer.Wizard
 
         private void CheckForUpdates()
         {
+            if (InstallerSource.IsGit())
+            {
+                if (_latest != null)  _latest.text = "git";
+                if (_update != null)  _update.style.display = DisplayStyle.None;
+                SetStatus("Installed via git. To update, change the installer git URL to a newer " +
+                          "tag in Packages/manifest.json (Package Manager → installer → version).", null);
+                return;
+            }
+
             _latestVersion = null;
             if (_latest != null) _latest.text = "checking…";
             if (_update != null) _update.style.display = DisplayStyle.None;

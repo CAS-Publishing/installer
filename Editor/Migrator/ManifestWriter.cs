@@ -55,6 +55,7 @@ namespace PSV.Installer.Migrator
                 switch (action)
                 {
                     case AddPackage add:               modified |= ApplyAddPackage(manifest, add); break;
+                    case AddGitPackage addGit:         modified |= ApplyAddGitPackage(manifest, addGit); break;
                     case RemovePackage remove:         modified |= ApplyRemovePackage(manifest, remove); break;
                     case UpdatePackageVersion update:  modified |= ApplyUpdatePackageVersion(manifest, update); break;
                     case AddScopedRegistry addReg:     modified |= ApplyAddScopedRegistry(manifest, addReg); break;
@@ -74,6 +75,16 @@ namespace PSV.Installer.Migrator
             if (FindPropertyIgnoreCase(deps, action.Id) != null)
                 return false; // already present (any casing) — idempotent
             deps[action.Id] = action.Version;
+            return true;
+        }
+
+        private static bool ApplyAddGitPackage(JObject manifest, AddGitPackage action)
+        {
+            if (string.IsNullOrEmpty(action.Spec)) return false; // never write an empty spec
+            var deps = EnsureDependencies(manifest);
+            if (FindPropertyIgnoreCase(deps, action.Id) != null)
+                return false; // already present (any form) — idempotent; switching method is out of scope
+            deps[action.Id] = action.Spec;
             return true;
         }
 

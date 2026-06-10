@@ -93,6 +93,18 @@ namespace PSV.Installer
                 return;
             }
 
+            // Git-installed installer → metadata comes from the git mirror's main branch. "Make
+            // current" = re-add the git URL so Unity re-resolves main; there's no Verdaccio version
+            // to probe. Honour the same once-per-session throttle (force bypasses it).
+            if (PSV.Installer.Common.InstallerSource.IsGit())
+            {
+                if (!force && SessionState.GetBool(UpdateProbedKey, false)) return;
+                SessionState.SetBool(UpdateProbedKey, true);
+                Debug.Log($"{LogPrefix} Re-resolving metadata from git mirror (main).");
+                CatalogUpdater.TrackInstall(CatalogUpdater.InstallGit(), "Metadata (git)");
+                return;
+            }
+
             // Probe the registry at most once per editor session — prevents a warning on
             // every domain reload while offline. A manual trigger (force) re-checks anyway.
             if (!force && SessionState.GetBool(UpdateProbedKey, false)) return;

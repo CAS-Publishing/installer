@@ -77,6 +77,10 @@ namespace PSV.Installer.Wizard
                 {
                     foreach (var s in statuses)
                     {
+                        // A non-UPM copy is already on disk — it will never appear in the UPM
+                        // package list, so polling for it would stall the sequence forever.
+                        // Skip it (it's also skipped by the planner, so it's never installed here).
+                        if (s.OutsideUpm) continue;
                         _targetIds.Add(s.Id);
                         _targetNames[s.Id] = s.DisplayName;
                     }

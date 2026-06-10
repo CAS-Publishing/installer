@@ -15,10 +15,40 @@
             <ui:Label text="This tool will install and configure all required components for CleverAdsSolutions Hub." class="cas-sub cas-sub--center" />
 
             <ui:VisualElement style="margin-top: 18px;">
-                <ui:Label text="CAS ID — Android" class="cas-label" style="margin-bottom: 6px;" />
-                <ui:TextField name="welcome-casid-android" class="cas-input" />
-                <ui:Label text="CAS ID — iOS" class="cas-label" style="margin-top: 10px; margin-bottom: 6px;" />
-                <ui:TextField name="welcome-casid-ios" class="cas-input" />
+                <ui:Label text="Installation method" class="cas-section-title" />
+
+                <ui:VisualElement name="method-upm" class="cas-method">
+                    <ui:VisualElement name="radio-upm" class="cas-radio cas-radio--on cas-method__radio">
+                        <ui:VisualElement class="cas-radio__dot" />
+                    </ui:VisualElement>
+                    <ui:VisualElement>
+                        <ui:Label text="UPM (Recommended)" class="cas-method__title" />
+                        <ui:Label text="Install via scoped registry" class="cas-method__desc" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <ui:VisualElement name="method-git" class="cas-method">
+                    <ui:VisualElement name="radio-git" class="cas-radio cas-method__radio">
+                        <ui:VisualElement class="cas-radio__dot" />
+                    </ui:VisualElement>
+                    <ui:VisualElement>
+                        <ui:Label text="Git URL" class="cas-method__title" />
+                        <ui:Label text="Install via Git repository (latest tagged version)" class="cas-method__desc" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <ui:VisualElement style="margin-top: 18px;">
+                <ui:Label text="CAS ID" class="cas-label" style="margin-bottom: 6px;" />
+
+                <!-- Single field; the Android/iOS segments swap which platform's value it edits. -->
+                <ui:VisualElement name="welcome-platform-seg" class="cas-seg" style="margin-bottom: 8px;">
+                    <ui:Button name="welcome-tab-android" text="Android" class="cas-btn cas-btn--sm cas-seg__item" />
+                    <ui:Button name="welcome-tab-ios" text="iOS" class="cas-btn cas-btn--sm cas-seg__item" />
+                </ui:VisualElement>
+
+                <ui:TextField name="welcome-casid" class="cas-input" />
+                <ui:Label name="welcome-casid-hint" text="Enter the CAS ID for at least one platform to continue." class="cas-muted" style="margin-top: 6px;" />
             </ui:VisualElement>
 
         </ui:VisualElement>
