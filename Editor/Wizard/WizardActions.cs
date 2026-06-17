@@ -136,15 +136,21 @@ namespace PSV.Installer.Wizard
                 return false;
             }
 
-            var version = !string.IsNullOrEmpty(rec.RecommendedVersion) ? rec.RecommendedVersion : rec.MinVersion;
-            if (string.IsNullOrEmpty(version))
+            var baseVersion = !string.IsNullOrEmpty(rec.RecommendedVersion) ? rec.RecommendedVersion : rec.MinVersion;
+            if (string.IsNullOrEmpty(baseVersion))
             {
                 EditorUtility.DisplayDialog("PSV Installer",
                     $"No version configured for {displayName} in the catalog — cannot migrate.", "OK");
                 return false;
             }
 
-            // Presence was detected by reflection (loaded namespaces); locate the actual folder(s)
+            // Which UPM package(s) to install. A multi-module SDK (rec.Modules — e.g. Firebase ships
+            // Analytics/RemoteConfig/Installations under one Assets/Firebase folder) installs EVERY
+            // module whose markers are detected on disk, so deleting the shared folder doesn't drop
+            // modules the project still uses. A single-package external installs just rec.Id.
+            var installs = ResolveInstallSet(rec, baseVersion);
+
+            // Presence was detected by reflection (loaded types); locate the actual folder(s)
             // on demand for deletion. Reflection can see the SDK without a pin-pointable folder
             // (e.g. odd layout) — then we can't auto-delete, so ask the user to remove it manually.
             var roots = AssetInstallProbe.FindRootsForMigration(rec.AssetMarkers);
@@ -157,16 +163,32 @@ namespace PSV.Installer.Wizard
                 return false;
             }
 
+            // Extra SDK-owned satellite folders the .unitypackage drops OUTSIDE the primary root
+            // (EDM, the SDK's own Editor Default Resources subfolder…). Only existing ones are kept;
+            // shared roots (Assets/Plugins) are never in this list — they're warned about below.
+            var extraRoots = AssetProbe.FindExisting(rec.ExtraCleanupPaths);
+            var deletePaths = new List<string>(roots);
+            foreach (var p in extraRoots)
+                if (!deletePaths.Contains(p)) deletePaths.Add(p);
+
+            // Shared folder (Assets/Plugins) may hold this SDK's native libs ALONGSIDE other SDKs' —
+            // never auto-deleted. Surface matching files so the user can prune them by hand.
+            var sharedLeftovers = AssetInstallProbe.FindLooseFiles(rec.AssetMarkers, "Plugins");
+
             var sb = new StringBuilder();
             sb.AppendLine($"Migrate {displayName} from a manual install to UPM?");
             sb.AppendLine();
-            if (roots.Count > 0)
+            sb.AppendLine("Install via UPM:");
+            foreach (var a in installs) sb.AppendLine($"  • {a.Id}@{a.Version}");
+            sb.AppendLine();
+            sb.AppendLine("Delete the manual copy:");
+            foreach (var r in deletePaths) sb.AppendLine($"  • Assets/{r}");
+            if (sharedLeftovers.Count > 0)
             {
-                sb.AppendLine("Delete the manual copy:");
-                foreach (var r in roots) sb.AppendLine($"  • Assets/{r}");
                 sb.AppendLine();
+                sb.AppendLine("⚠ Shared folder — NOT deleted automatically; remove these by hand after migrating:");
+                foreach (var f in sharedLeftovers) sb.AppendLine($"  • Assets/{f}");
             }
-            sb.AppendLine($"Then install via UPM: {componentId}@{version}");
             sb.AppendLine();
             sb.Append("Files are removed via git (they must be committed/clean to be recoverable). " +
                       "Use 'git restore .' to undo if needed.");
@@ -176,24 +198,21 @@ namespace PSV.Installer.Wizard
 
             // STEP 1 — delete the manual copy FIRST. If git can't recover it (untracked/dirty), this
             // fails before any manifest change, so we never end up with both copies (a duplicate).
-            if (roots.Count > 0)
-            {
-                var deletePlan = new List<MigrationAction>();
-                foreach (var r in roots) deletePlan.Add(new BackupAndDeletePath(r));
+            var deletePlan = new List<MigrationAction>();
+            foreach (var r in deletePaths) deletePlan.Add(new BackupAndDeletePath(r));
 
-                var del = new MigrationRunner().Apply(deletePlan);
-                if (!del.Success)
-                {
-                    EditorUtility.DisplayDialog("PSV Installer",
-                        $"Couldn't remove the manual copy of {displayName}:\n• " +
-                        string.Join("\n• ", del.Failures) +
-                        "\n\nCommit those files to git first (so they're recoverable), or delete them " +
-                        "manually, then migrate again. manifest.json was NOT changed.", "OK");
-                    return true; // re-scan: state is unchanged but the user acted
-                }
+            var del = new MigrationRunner().Apply(deletePlan);
+            if (!del.Success)
+            {
+                EditorUtility.DisplayDialog("PSV Installer",
+                    $"Couldn't remove the manual copy of {displayName}:\n• " +
+                    string.Join("\n• ", del.Failures) +
+                    "\n\nCommit those files to git first (so they're recoverable), or delete them " +
+                    "manually, then migrate again. manifest.json was NOT changed.", "OK");
+                return true; // re-scan: state is unchanged but the user acted
             }
 
-            // STEP 2 — UPM install (registry scope + package). Safe now the manual copy is gone.
+            // STEP 2 — UPM install (registry scope + every resolved module). Safe now the copy is gone.
             var addPlan = new List<MigrationAction>();
             if (rec.Scopes != null)
             {
@@ -202,13 +221,23 @@ namespace PSV.Installer.Wizard
                     if (!string.IsNullOrEmpty(scope))
                         addPlan.Add(new AddScopedRegistry(rec.Registry ?? string.Empty, url, scope));
             }
-            addPlan.Add(new AddPackage(componentId, version));
+            foreach (var a in installs) addPlan.Add(a);
 
             var add = new MigrationRunner().Apply(addPlan);
             if (add.Success)
             {
-                Debug.Log($"[PSV Installer Wizard] Migrated {displayName} to UPM ({componentId}@{version}). " +
+                var installed = new StringBuilder();
+                foreach (var a in installs)
+                {
+                    if (installed.Length > 0) installed.Append(", ");
+                    installed.Append($"{a.Id}@{a.Version}");
+                }
+                Debug.Log($"[PSV Installer Wizard] Migrated {displayName} to UPM ({installed}). " +
                           "Unity will resolve packages now.");
+                if (sharedLeftovers.Count > 0)
+                    Debug.LogWarning($"[PSV Installer Wizard] {displayName}: files in the shared Assets/Plugins " +
+                        "folder were NOT deleted — remove them by hand to avoid conflicts: Assets/" +
+                        string.Join(", Assets/", sharedLeftovers));
             }
             else
             {
@@ -218,6 +247,52 @@ namespace PSV.Installer.Wizard
                     "\n\nRun Install again from the Components tab.", "OK");
             }
             return true;
+        }
+
+        /// <summary>
+        /// Resolves the set of UPM packages to install when migrating <paramref name="rec"/>. For a
+        /// multi-module external it returns one <see cref="AddPackage"/> per module whose markers are
+        /// detected among the loaded types (at <c>module.RecommendedVersion ?? baseVersion</c>); for a
+        /// single-package external it returns just <c>rec.Id@baseVersion</c>. Never empty — if a
+        /// multi-module record somehow matches no module (the external was still flagged as present),
+        /// it falls back to the primary id so a migration never installs nothing.
+        /// </summary>
+        internal static List<AddPackage> ResolveInstallSet(ExternalRecord rec, string baseVersion)
+        {
+            // Reflection over loaded types only when the record actually declares modules.
+            var loaded = (rec.Modules != null && rec.Modules.Count > 0)
+                ? (ICollection<string>)AssetInstallProbe.CollectLoadedIdentifiers()
+                : null;
+            return ResolveInstallSet(rec, baseVersion, loaded);
+        }
+
+        /// <summary>
+        /// Pure core of <see cref="ResolveInstallSet(ExternalRecord,string)"/>: resolves the install
+        /// set against an explicit <paramref name="loadedIdentifiers"/> set (no reflection), so it is
+        /// unit-testable. See the public overload for the contract.
+        /// </summary>
+        internal static List<AddPackage> ResolveInstallSet(
+            ExternalRecord rec, string baseVersion, ICollection<string> loadedIdentifiers)
+        {
+            var installs = new List<AddPackage>();
+
+            if (rec.Modules != null && rec.Modules.Count > 0 && loadedIdentifiers != null)
+            {
+                var seen = new HashSet<string>();
+                foreach (var m in rec.Modules)
+                {
+                    if (m == null || string.IsNullOrEmpty(m.Id)) continue;
+                    if (!AssetInstallProbe.IsPresentInIdentifiers(loadedIdentifiers, m.AssetMarkers)) continue;
+                    if (!seen.Add(m.Id)) continue;
+                    var v = !string.IsNullOrEmpty(m.RecommendedVersion) ? m.RecommendedVersion : baseVersion;
+                    installs.Add(new AddPackage(m.Id, v));
+                }
+            }
+
+            if (installs.Count == 0)
+                installs.Add(new AddPackage(rec.Id, baseVersion)); // single-package or safety fallback
+
+            return installs;
         }
 
         private static string ResolveRegistryUrl(PackageCatalog catalog, ExternalRecord rec)

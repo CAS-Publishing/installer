@@ -11,11 +11,13 @@ namespace PSV.Installer.Scanner
     /// <summary>
     /// Detects an SDK installed OUTSIDE UPM (e.g. via a .unitypackage or manual drop).
     ///
-    /// Presence is decided by REFLECTION over loaded types' namespaces (<see cref="CollectLoadedNamespaces"/>
-    /// + <see cref="IsPresentInNamespaces"/>): this catches every install shape — asmdef, precompiled
-    /// DLL, AND raw .cs scripts with no asmdef (they compile into Assembly-CSharp, so their namespace
-    /// is still a loaded type). UPM packages also load types, but the classifier only consults this
-    /// when the package is ABSENT from the manifest, so a positive means a non-UPM copy in the project.
+    /// Presence is decided by REFLECTION over loaded types (<see cref="CollectLoadedIdentifiers"/>
+    /// + <see cref="IsPresentInIdentifiers"/>): this catches every install shape — asmdef, precompiled
+    /// DLL, AND raw .cs scripts with no asmdef (they compile into Assembly-CSharp). The matched
+    /// identifier is a type's namespace, or — for types in the GLOBAL namespace (e.g. Tenjin's
+    /// <c>Tenjin</c>/<c>BaseTenjin</c> classes) — its simple name, so namespace-less SDKs are still
+    /// seen. UPM packages also load types, but the classifier only consults this when the package is
+    /// ABSENT from the manifest, so a positive means a non-UPM copy in the project.
     ///
     /// The folder(s) to delete for a migration are found on demand by <see cref="FindRootsForMigration"/>
     /// (a one-off Assets/ walk matching asmdef name/rootNamespace, DLL file name, and .cs namespace) —
@@ -26,8 +28,22 @@ namespace PSV.Installer.Scanner
     {
         // ── Presence (reflection, per scan) ──────────────────────────────────
 
-        /// <summary>Collects the namespaces of all loaded types. Tolerant of partially-loaded assemblies.</summary>
-        public static HashSet<string> CollectLoadedNamespaces()
+        /// <summary>
+        /// The marker-matching identifier for a loaded type: its namespace when it has one, otherwise
+        /// its simple name. SDKs whose public types live in the GLOBAL namespace (e.g. Tenjin's
+        /// <c>Tenjin</c> / <c>BaseTenjin</c> classes) have no namespace to match against — using the
+        /// simple name there lets a "Tenjin" marker still detect them. Namespaced types keep using the
+        /// namespace, so detection of CAS / Firebase (already namespaced) is unchanged.
+        /// </summary>
+        internal static string TypeIdentifier(string ns, string simpleName)
+            => string.IsNullOrEmpty(ns) ? simpleName : ns;
+
+        /// <summary>
+        /// Collects marker-matching identifiers for all loaded types — namespaces for namespaced types,
+        /// simple names for global-namespace types (see <see cref="TypeIdentifier"/>). Tolerant of
+        /// partially-loaded assemblies.
+        /// </summary>
+        public static HashSet<string> CollectLoadedIdentifiers()
         {
             var set = new HashSet<string>(StringComparer.Ordinal);
             foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
@@ -39,19 +55,20 @@ namespace PSV.Installer.Scanner
 
                 foreach (var t in types)
                 {
-                    var ns = t?.Namespace;
-                    if (!string.IsNullOrEmpty(ns)) set.Add(ns);
+                    if (t == null) continue;
+                    var id = TypeIdentifier(t.Namespace, t.Name);
+                    if (!string.IsNullOrEmpty(id)) set.Add(id);
                 }
             }
             return set;
         }
 
-        /// <summary>True when any loaded namespace matches a marker (case-insensitive substring).</summary>
-        public static bool IsPresentInNamespaces(IEnumerable<string> namespaces, IReadOnlyList<string> markers)
+        /// <summary>True when any loaded identifier matches a marker (case-insensitive substring).</summary>
+        public static bool IsPresentInIdentifiers(IEnumerable<string> identifiers, IReadOnlyList<string> markers)
         {
-            if (namespaces == null || markers == null || markers.Count == 0) return false;
-            foreach (var ns in namespaces)
-                if (MatchesAny(ns, markers)) return true;
+            if (identifiers == null || markers == null || markers.Count == 0) return false;
+            foreach (var id in identifiers)
+                if (MatchesAny(id, markers)) return true;
             return false;
         }
 
@@ -85,7 +102,11 @@ namespace PSV.Installer.Scanner
                     }
                     else if (string.Equals(ext, ".cs", StringComparison.OrdinalIgnoreCase))
                     {
-                        hit = MatchesAny(FirstNamespace(file), markers);
+                        // Namespace first; fall back to the file name for global-namespace SDKs
+                        // (e.g. Tenjin's BaseTenjin.cs / Tenjin.cs declare no namespace), mirroring
+                        // the DLL filename match above so those roots are still located.
+                        hit = MatchesAny(FirstNamespace(file), markers)
+                              || MatchesAny(Path.GetFileNameWithoutExtension(file), markers);
                     }
                     else continue;
 
@@ -99,6 +120,43 @@ namespace PSV.Installer.Scanner
                 // Read-only probe: any IO failure → return what we found so far.
             }
             return roots;
+        }
+
+        /// <summary>
+        /// Read-only: relative-to-Assets paths of files under <paramref name="relativeDir"/> (e.g.
+        /// "Plugins") whose file name matches a marker. Used to SURFACE this SDK's files left in a
+        /// SHARED folder that the installer must NOT auto-delete (other SDKs may share it), so the
+        /// user can prune them by hand. <c>.meta</c> files are skipped; capped at <paramref name="max"/>.
+        /// Never throws.
+        /// </summary>
+        public static List<string> FindLooseFiles(IReadOnlyList<string> markers, string relativeDir, int max = 25)
+        {
+            var hits = new List<string>();
+            if (markers == null || markers.Count == 0 || string.IsNullOrEmpty(relativeDir)) return hits;
+
+            var assetsRoot = Application.dataPath;
+            var dir = Path.GetFullPath(Path.Combine(assetsRoot, relativeDir));
+            if (!Directory.Exists(dir)) return hits;
+
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(dir, "*.*", SearchOption.AllDirectories))
+                {
+                    if (string.Equals(Path.GetExtension(file), ".meta", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (!MatchesAny(Path.GetFileNameWithoutExtension(file), markers)) continue;
+
+                    var full = Path.GetFullPath(file);
+                    if (full.Length <= assetsRoot.Length) continue;
+                    var rel = full.Substring(assetsRoot.Length).Replace('\\', '/').TrimStart('/');
+                    hits.Add(rel);
+                    if (hits.Count >= max) break;
+                }
+            }
+            catch
+            {
+                // Read-only probe: any IO failure → return what we found so far.
+            }
+            return hits;
         }
 
         // ── Shared helpers ───────────────────────────────────────────────────

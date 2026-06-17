@@ -88,17 +88,54 @@ namespace PSV.Installer.Wizard
         private static Object LocateAsset(ConfigRequirement req)
             => LocateAsset(req.AssetPath, req.AssetType);
 
-        /// <summary>Locates a settings asset by explicit path or by ScriptableObject type name.</summary>
+        /// <summary>
+        /// Locates a settings asset by explicit path or by ScriptableObject type name. When an explicit
+        /// <paramref name="assetPath"/> is given but nothing is there, the asset may have been moved out
+        /// of the catalog's default folder (e.g. a relocated CAS settings asset) — so we fall back to
+        /// finding it anywhere under Assets/ by its file name. This keeps the default path as the fast
+        /// path while not hard-pinning the location.
+        /// </summary>
         internal static Object LocateAsset(string assetPath, string assetType)
         {
+            // 1. Exact path — the default location.
             if (!string.IsNullOrEmpty(assetPath))
-                return AssetDatabase.LoadAssetAtPath<Object>(assetPath);
+            {
+                var atPath = AssetDatabase.LoadAssetAtPath<Object>(assetPath);
+                if (atPath != null) return atPath;
 
+                // 2. Moved out of the default folder → find it by file name anywhere under Assets/.
+                var byName = FindByFileName(Path.GetFileNameWithoutExtension(assetPath));
+                if (byName != null) return byName;
+            }
+
+            // 3. Type-based search (catalog specifies a ScriptableObject type rather than a path).
             if (!string.IsNullOrEmpty(assetType))
             {
                 var guids = AssetDatabase.FindAssets("t:" + assetType);
                 if (guids.Length > 0)
                     return AssetDatabase.LoadAssetAtPath<Object>(AssetDatabase.GUIDToAssetPath(guids[0]));
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Locates an asset anywhere under Assets/ by its exact file name (no extension). Confirms an
+        /// exact match — <see cref="AssetDatabase.FindAssets(string)"/> does token/prefix matching, so
+        /// "CASSettings" would also surface "CASSettingsAndroid"; we filter to the precise file name.
+        /// </summary>
+        private static Object FindByFileName(string fileName)
+        {
+            if (string.IsNullOrEmpty(fileName)) return null;
+
+            foreach (var guid in AssetDatabase.FindAssets(fileName))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (!string.Equals(Path.GetFileNameWithoutExtension(path), fileName,
+                        System.StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var obj = AssetDatabase.LoadAssetAtPath<Object>(path);
+                if (obj != null) return obj;
             }
             return null;
         }

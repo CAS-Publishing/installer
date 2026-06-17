@@ -27,6 +27,36 @@ namespace PSV.Installer.Tests
             Assert.IsFalse(AssetInstallProbe.MatchesAny("Tenjin.Runtime", null));
         }
 
+        // ── Global-namespace type detection (Tenjin regression) ──
+        // Tenjin's Unity SDK declares its `Tenjin` / `BaseTenjin` classes in the GLOBAL
+        // namespace. The old probe collected only t.Namespace, so those types were dropped
+        // and a manually-installed Tenjin went undetected — the installer then added a
+        // duplicate UPM copy, producing the CS0434 "namespace vs type 'Tenjin'" conflict.
+
+        [Test]
+        public void TypeIdentifier_uses_simple_name_for_global_namespace_types()
+        {
+            Assert.AreEqual("Tenjin", AssetInstallProbe.TypeIdentifier(null, "Tenjin"));
+            Assert.AreEqual("BaseTenjin", AssetInstallProbe.TypeIdentifier("", "BaseTenjin"));
+        }
+
+        [Test]
+        public void TypeIdentifier_uses_namespace_for_namespaced_types()
+        {
+            Assert.AreEqual("Tenjin.Runtime", AssetInstallProbe.TypeIdentifier("Tenjin.Runtime", "TenjinSDK"));
+            Assert.AreEqual("Firebase.Analytics", AssetInstallProbe.TypeIdentifier("Firebase.Analytics", "FirebaseAnalytics"));
+        }
+
+        [Test]
+        public void GlobalNamespace_Tenjin_type_is_detected_by_marker()
+        {
+            var ids = new System.Collections.Generic.HashSet<string>
+            {
+                AssetInstallProbe.TypeIdentifier(null, "Tenjin"),
+            };
+            Assert.IsTrue(AssetInstallProbe.IsPresentInIdentifiers(ids, new[] { "Tenjin" }));
+        }
+
         // ── StateClassifier: external out-of-UPM detection ──
 
         [Test]

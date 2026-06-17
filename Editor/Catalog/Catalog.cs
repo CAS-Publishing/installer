@@ -91,6 +91,26 @@ namespace PSV.Installer.Catalog
         [JsonProperty("git")]                public GitInstall Git;
 
         /// <summary>
+        /// Optional sub-modules that share this SDK's on-disk footprint (e.g. Firebase ships
+        /// Analytics / RemoteConfig / Installations under one <c>Assets/Firebase</c> folder).
+        /// When migrating, the installer installs the UPM id of EVERY module whose markers are
+        /// detected on disk — not just <see cref="Id"/> — so a multi-module SDK isn't reduced to
+        /// one module (which would leave the others deleted-but-not-reinstalled). Absent → the
+        /// external behaves as a single package keyed by <see cref="Id"/> (unchanged).
+        /// </summary>
+        [JsonProperty("modules")]            public List<ExternalModule> Modules;
+
+        /// <summary>
+        /// Optional extra Assets-relative paths WHOLLY OWNED by this SDK that its .unitypackage
+        /// drops OUTSIDE the primary marker root (e.g. EDM's <c>ExternalDependencyManager</c>,
+        /// the SDK's own <c>Editor Default Resources/&lt;sdk&gt;</c> subfolder). On migration these
+        /// are deleted through the same git/path-safety guard as the primary root. SHARED roots
+        /// (e.g. <c>Assets/Plugins</c>) must NOT be listed here — they can hold other SDKs' files;
+        /// the installer surfaces those as a manual-cleanup warning instead. Absent → nothing extra.
+        /// </summary>
+        [JsonProperty("extraCleanupPaths")]  public List<string> ExtraCleanupPaths;
+
+        /// <summary>
         /// Recommended version string used by the migrator when generating
         /// <c>AddPackage</c> actions for this external. Optional — when absent,
         /// <see cref="MinVersion"/> is used; when both are absent the planner emits
@@ -171,6 +191,20 @@ namespace PSV.Installer.Catalog
         /// </summary>
         [JsonProperty("reason")]
         public string Reason;
+    }
+
+    /// <summary>
+    /// One sub-module of a multi-module external (see <see cref="ExternalRecord.Modules"/>).
+    /// Detected independently by its own <see cref="AssetMarkers"/>; installed at
+    /// <see cref="RecommendedVersion"/> when present, otherwise the parent record's version.
+    /// </summary>
+    public sealed class ExternalModule
+    {
+        [JsonProperty("id")]                 public string Id;
+        [JsonProperty("assetMarkers")]       public List<string> AssetMarkers;
+
+        /// <summary>Optional per-module version override; null → inherit the parent external's version.</summary>
+        [JsonProperty("recommendedVersion")] public string RecommendedVersion;
     }
 
     /// <summary>The flat set of packages to write as git-URL dependencies for one component.</summary>

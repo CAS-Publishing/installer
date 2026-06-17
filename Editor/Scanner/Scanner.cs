@@ -44,14 +44,15 @@ namespace PSV.Installer.Scanner
             {
                 // Detect non-UPM (.unitypackage / manual) installs so an installed-outside-UPM SDK
                 // isn't reported as NotInstalled (which would let the hub duplicate it). Presence is
-                // by loaded-type namespaces (covers asmdef, DLL, and raw .cs with no asmdef). The
-                // namespace set is collected ONCE, only when some external declares assetMarkers.
-                HashSet<string> loadedNamespaces = null;
+                // by loaded-type identifiers — namespace, or simple name for global-namespace types
+                // (covers asmdef, DLL, and raw .cs with no asmdef). The identifier set is collected
+                // ONCE, only when some external declares assetMarkers.
+                HashSet<string> loadedIdentifiers = null;
                 foreach (var record in catalog.External)
                 {
                     if (record?.AssetMarkers != null && record.AssetMarkers.Count > 0)
                     {
-                        loadedNamespaces = AssetInstallProbe.CollectLoadedNamespaces();
+                        loadedIdentifiers = AssetInstallProbe.CollectLoadedIdentifiers();
                         break;
                     }
                 }
@@ -59,8 +60,8 @@ namespace PSV.Installer.Scanner
                 foreach (var record in catalog.External)
                 {
                     if (record == null) continue;
-                    var outsideUpm = loadedNamespaces != null &&
-                                     AssetInstallProbe.IsPresentInNamespaces(loadedNamespaces, record.AssetMarkers);
+                    var outsideUpm = loadedIdentifiers != null &&
+                                     AssetInstallProbe.IsPresentInIdentifiers(loadedIdentifiers, record.AssetMarkers);
                     externals.Add(StateClassifier.Classify(record, manifest, outsideUpm));
                 }
             }
