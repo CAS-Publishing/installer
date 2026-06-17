@@ -175,25 +175,23 @@ namespace PSV.Installer.Wizard
             // never auto-deleted. Surface matching files so the user can prune them by hand.
             var sharedLeftovers = AssetInstallProbe.FindLooseFiles(rec.AssetMarkers, "Plugins");
 
-            var sb = new StringBuilder();
-            sb.AppendLine($"Migrate {displayName} from a manual install to UPM?");
-            sb.AppendLine();
-            sb.AppendLine("Install via UPM:");
-            foreach (var a in installs) sb.AppendLine($"  • {a.Id}@{a.Version}");
-            sb.AppendLine();
-            sb.AppendLine("Delete the manual copy:");
-            foreach (var r in deletePaths) sb.AppendLine($"  • Assets/{r}");
-            if (sharedLeftovers.Count > 0)
+            // Downgrade guard: if the manual copy reports a version (via a catalog-declared static member)
+            // NEWER than what we'd install, migrating to the catalog-pinned UPM version would silently
+            // downgrade it — surface that up front so the user decides knowingly.
+            string downgrade = null;
+            if (!string.IsNullOrEmpty(rec.VersionType) && !string.IsNullOrEmpty(rec.VersionField))
             {
-                sb.AppendLine();
-                sb.AppendLine("⚠ Shared folder — NOT deleted automatically; remove these by hand after migrating:");
-                foreach (var f in sharedLeftovers) sb.AppendLine($"  • Assets/{f}");
+                var onDisk = AssetInstallProbe.ReadStaticVersion(rec.VersionType, rec.VersionField);
+                if (!string.IsNullOrEmpty(onDisk) && CatalogUpdater.IsNewer(onDisk, baseVersion))
+                    downgrade = $"Your installed {displayName} is {onDisk}, NEWER than the {baseVersion} this " +
+                                "will install — migrating to UPM will DOWNGRADE it.";
             }
-            sb.AppendLine();
-            sb.Append("Files are removed via git (they must be committed/clean to be recoverable). " +
-                      "Use 'git restore .' to undo if needed.");
 
-            if (!EditorUtility.DisplayDialog("PSV Installer", sb.ToString(), "Migrate", "Cancel"))
+            // Custom, readable confirm window (UI Toolkit) instead of a cramped native text dialog.
+            var installLines = new List<string>(installs.Count);
+            foreach (var a in installs) installLines.Add($"{a.Id}@{a.Version}");
+
+            if (!MigrateConfirmWindow.Confirm(displayName, downgrade, installLines, deletePaths, sharedLeftovers))
                 return false;
 
             // STEP 1 — delete the manual copy FIRST. If git can't recover it (untracked/dirty), this

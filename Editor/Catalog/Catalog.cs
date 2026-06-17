@@ -111,6 +111,17 @@ namespace PSV.Installer.Catalog
         [JsonProperty("extraCleanupPaths")]  public List<string> ExtraCleanupPaths;
 
         /// <summary>
+        /// Optional static string member exposing the SDK's own version at runtime, used to detect a
+        /// DOWNGRADE before migrating a manual (Assets) install to the catalog-pinned UPM version.
+        /// Read by reflection from the LOADED manual copy as <c>VersionType.VersionField</c> (a static
+        /// field / property / const string, e.g. Firebase: <c>"Firebase.VersionInfo"</c> + <c>"SdkVersion"</c>).
+        /// When the on-disk version is newer than the version we'd install, the migrate dialog warns.
+        /// Absent / type or member not found → no downgrade check (migration proceeds as before).
+        /// </summary>
+        [JsonProperty("versionType")]        public string VersionType;
+        [JsonProperty("versionField")]       public string VersionField;
+
+        /// <summary>
         /// Recommended version string used by the migrator when generating
         /// <c>AddPackage</c> actions for this external. Optional — when absent,
         /// <see cref="MinVersion"/> is used; when both are absent the planner emits

@@ -92,5 +92,33 @@ namespace PSV.Installer.Tests
 
             Assert.AreEqual(ExternalState.UpmCurrent, res.State);
         }
+
+        // ── ReadStaticVersion: reflection version read (downgrade guard) ──
+        // Reads a manually-installed SDK's own reported version so migration can warn before
+        // downgrading a newer manual copy to the catalog-pinned UPM version.
+
+        [Test]
+        public void ReadStaticVersion_reads_static_const_string()
+        {
+            Assert.AreEqual("13.5.0",
+                AssetInstallProbe.ReadStaticVersion("PSV.Installer.Tests.FakeSdkVersion", "SdkVersion"));
+        }
+
+        [Test]
+        public void ReadStaticVersion_null_when_type_or_member_absent()
+        {
+            Assert.IsNull(AssetInstallProbe.ReadStaticVersion("PSV.Installer.Tests.NoSuchType", "SdkVersion"));
+            Assert.IsNull(AssetInstallProbe.ReadStaticVersion("PSV.Installer.Tests.FakeSdkVersion", "NoSuchMember"));
+            Assert.IsNull(AssetInstallProbe.ReadStaticVersion(null, "SdkVersion"));
+            Assert.IsNull(AssetInstallProbe.ReadStaticVersion("PSV.Installer.Tests.FakeSdkVersion", ""));
+        }
+    }
+
+    /// <summary>Stand-in for an SDK that exposes its version via a static const string (e.g. Firebase's
+    /// <c>Firebase.VersionInfo.SdkVersion</c>), so <see cref="AssetInstallProbe.ReadStaticVersion"/> is
+    /// testable without a real SDK loaded.</summary>
+    internal static class FakeSdkVersion
+    {
+        public const string SdkVersion = "13.5.0";
     }
 }

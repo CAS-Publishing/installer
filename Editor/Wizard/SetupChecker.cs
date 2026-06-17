@@ -92,8 +92,11 @@ namespace PSV.Installer.Wizard
         /// Locates a settings asset by explicit path or by ScriptableObject type name. When an explicit
         /// <paramref name="assetPath"/> is given but nothing is there, the asset may have been moved out
         /// of the catalog's default folder (e.g. a relocated CAS settings asset) — so we fall back to
-        /// finding it anywhere under Assets/ by its file name. This keeps the default path as the fast
-        /// path while not hard-pinning the location.
+        /// finding it by file name. If the configured path sits in a <c>Resources</c> folder (the asset
+        /// is loaded by name via <c>Resources.Load</c>, so it MUST live under some Resources folder), the
+        /// fallback is restricted to Resources folders — mirroring how the SDK actually finds it at
+        /// runtime and avoiding false positives from stray copies elsewhere. Otherwise it searches
+        /// anywhere under Assets/. Keeps the default path as the fast path without hard-pinning location.
         /// </summary>
         internal static Object LocateAsset(string assetPath, string assetType)
         {
@@ -103,8 +106,10 @@ namespace PSV.Installer.Wizard
                 var atPath = AssetDatabase.LoadAssetAtPath<Object>(assetPath);
                 if (atPath != null) return atPath;
 
-                // 2. Moved out of the default folder → find it by file name anywhere under Assets/.
-                var byName = FindByFileName(Path.GetFileNameWithoutExtension(assetPath));
+                // 2. Moved out of the default folder → find it by file name. Restrict to Resources
+                //    folders when the configured asset is a Resources-loaded one (the universal case).
+                var byName = FindByFileName(Path.GetFileNameWithoutExtension(assetPath),
+                                            requireResources: IsUnderResources(assetPath));
                 if (byName != null) return byName;
             }
 
@@ -119,11 +124,21 @@ namespace PSV.Installer.Wizard
         }
 
         /// <summary>
-        /// Locates an asset anywhere under Assets/ by its exact file name (no extension). Confirms an
-        /// exact match — <see cref="AssetDatabase.FindAssets(string)"/> does token/prefix matching, so
-        /// "CASSettings" would also surface "CASSettingsAndroid"; we filter to the precise file name.
+        /// True when an asset path sits inside a Unity <c>Resources</c> special folder (has a
+        /// <c>/Resources/</c> path segment). Case-sensitive, because Unity only treats an exactly-named
+        /// "Resources" folder as special. <c>Assets/MyResources/x</c> is NOT a match (no segment boundary).
         /// </summary>
-        private static Object FindByFileName(string fileName)
+        internal static bool IsUnderResources(string assetPath)
+            => !string.IsNullOrEmpty(assetPath) && assetPath.Replace('\\', '/').Contains("/Resources/");
+
+        /// <summary>
+        /// Locates an asset by its exact file name (no extension). Confirms an exact match —
+        /// <see cref="AssetDatabase.FindAssets(string)"/> does token/prefix matching, so "CASSettings"
+        /// would also surface "CASSettingsAndroid"; we filter to the precise file name. When
+        /// <paramref name="requireResources"/>, only candidates under a <c>Resources</c> folder are
+        /// accepted (matches how a Resources-loaded settings asset is actually found at runtime).
+        /// </summary>
+        private static Object FindByFileName(string fileName, bool requireResources)
         {
             if (string.IsNullOrEmpty(fileName)) return null;
 
@@ -132,6 +147,9 @@ namespace PSV.Installer.Wizard
                 var path = AssetDatabase.GUIDToAssetPath(guid);
                 if (!string.Equals(Path.GetFileNameWithoutExtension(path), fileName,
                         System.StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (requireResources && !IsUnderResources(path))
                     continue;
 
                 var obj = AssetDatabase.LoadAssetAtPath<Object>(path);

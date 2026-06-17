@@ -72,6 +72,40 @@ namespace PSV.Installer.Scanner
             return false;
         }
 
+        /// <summary>
+        /// Reads a static string version member <c>typeFullName.memberName</c> (field, property, or const)
+        /// from any loaded assembly via reflection — i.e. the version a manually-installed SDK reports at
+        /// runtime. Used to detect a downgrade before migrating that manual copy to a pinned UPM version.
+        /// Returns null when not configured, the type/member is absent, or the value isn't a non-empty
+        /// string. Tolerant of partially-loaded assemblies; never throws.
+        /// </summary>
+        public static string ReadStaticVersion(string typeFullName, string memberName)
+        {
+            if (string.IsNullOrEmpty(typeFullName) || string.IsNullOrEmpty(memberName)) return null;
+
+            const BindingFlags Flags = BindingFlags.Public | BindingFlags.NonPublic |
+                                       BindingFlags.Static | BindingFlags.FlattenHierarchy;
+
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                Type t;
+                try { t = asm.GetType(typeFullName, throwOnError: false); }
+                catch { continue; }
+                if (t == null) continue;
+
+                try
+                {
+                    var fi = t.GetField(memberName, Flags);     // covers const + static field
+                    if (fi != null && fi.GetValue(null) is string fv && !string.IsNullOrEmpty(fv)) return fv;
+
+                    var pi = t.GetProperty(memberName, Flags);
+                    if (pi != null && pi.GetValue(null) is string pv && !string.IsNullOrEmpty(pv)) return pv;
+                }
+                catch { /* keep scanning other assemblies */ }
+            }
+            return null;
+        }
+
         // ── Migration roots (file walk, on demand) ───────────────────────────
 
         /// <summary>
