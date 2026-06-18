@@ -101,14 +101,15 @@ namespace PSV.Installer.Catalog
         [JsonProperty("modules")]            public List<ExternalModule> Modules;
 
         /// <summary>
-        /// Optional extra Assets-relative paths WHOLLY OWNED by this SDK that its .unitypackage
-        /// drops OUTSIDE the primary marker root (e.g. EDM's <c>ExternalDependencyManager</c>,
-        /// the SDK's own <c>Editor Default Resources/&lt;sdk&gt;</c> subfolder). On migration these
-        /// are deleted through the same git/path-safety guard as the primary root. SHARED roots
-        /// (e.g. <c>Assets/Plugins</c>) must NOT be listed here — they can hold other SDKs' files;
-        /// the installer surfaces those as a manual-cleanup warning instead. Absent → nothing extra.
+        /// Assets-relative folders WHOLLY OWNED by this SDK that migration deletes when moving it to UPM
+        /// (its install folder + satellites like EDM / PlayServicesResolver / its own
+        /// <c>Editor Default Resources/&lt;sdk&gt;</c> subfolder). Only the ones that actually exist are
+        /// deleted, each through the git/path-safety guard. NEVER list a shared folder
+        /// (<c>Assets/Plugins</c>, <c>Resources</c>, …) — those are surfaced as a manual-cleanup warning.
+        /// This is the ONLY source of migration delete targets — there is no file-walk. Absent → the
+        /// migrator reports "couldn't locate, remove manually" (safe no-op).
         /// </summary>
-        [JsonProperty("extraCleanupPaths")]  public List<string> ExtraCleanupPaths;
+        [JsonProperty("assetRoots")]         public List<string> AssetRoots;
 
         /// <summary>
         /// Optional static string member exposing the SDK's own version at runtime, used to detect a

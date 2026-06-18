@@ -1,3 +1,4 @@
+using Newtonsoft.Json;
 using NUnit.Framework;
 using PSV.Installer.Catalog;
 
@@ -56,6 +57,16 @@ namespace PSV.Installer.Tests
             Assert.AreEqual(CatalogParseStatus.Malformed, status);
             Assert.IsNull(cat);
             Assert.IsNotEmpty(err);
+        }
+
+        [Test]
+        public void ExternalRecord_parses_assetRoots()
+        {
+            const string json = "{\"id\":\"com.x\",\"assetRoots\":[\"Firebase\",\"ExternalDependencyManager\"]}";
+            var rec = JsonConvert.DeserializeObject<ExternalRecord>(json);
+            Assert.AreEqual(2, rec.AssetRoots.Count);
+            Assert.AreEqual("Firebase", rec.AssetRoots[0]);
+            Assert.AreEqual("ExternalDependencyManager", rec.AssetRoots[1]);
         }
     }
 }

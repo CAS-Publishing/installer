@@ -150,26 +150,18 @@ namespace PSV.Installer.Wizard
             // modules the project still uses. A single-package external installs just rec.Id.
             var installs = ResolveInstallSet(rec, baseVersion);
 
-            // Presence was detected by reflection (loaded types); locate the actual folder(s)
-            // on demand for deletion. Reflection can see the SDK without a pin-pointable folder
-            // (e.g. odd layout) — then we can't auto-delete, so ask the user to remove it manually.
-            var roots = AssetInstallProbe.FindRootsForMigration(rec.AssetMarkers);
-            if (roots.Count == 0)
+            // Delete ONLY the SDK-owned folders the catalog declares, and only those that exist. No
+            // file-walk: a folder can never be inferred from a stray user script, so user folders
+            // (Assets/Scripts, …) can never be targeted.
+            var deletePaths = AssetProbe.FindExisting(rec.AssetRoots);
+            if (deletePaths.Count == 0)
             {
                 EditorUtility.DisplayDialog("PSV Installer",
-                    $"{displayName} appears to be installed manually, but its files couldn't be " +
-                    "located under Assets/ (no matching asmdef / DLL / script folder). Remove the " +
-                    "manual copy yourself, then use Install to add the UPM version.", "OK");
+                    $"{displayName} appears to be installed manually, but its known folders weren't " +
+                    "found under Assets/ (non-standard layout). Remove the manual copy yourself, then " +
+                    "use Install to add the UPM version.", "OK");
                 return false;
             }
-
-            // Extra SDK-owned satellite folders the .unitypackage drops OUTSIDE the primary root
-            // (EDM, the SDK's own Editor Default Resources subfolder…). Only existing ones are kept;
-            // shared roots (Assets/Plugins) are never in this list — they're warned about below.
-            var extraRoots = AssetProbe.FindExisting(rec.ExtraCleanupPaths);
-            var deletePaths = new List<string>(roots);
-            foreach (var p in extraRoots)
-                if (!deletePaths.Contains(p)) deletePaths.Add(p);
 
             // Shared folder (Assets/Plugins) may hold this SDK's native libs ALONGSIDE other SDKs' —
             // never auto-deleted. Surface matching files so the user can prune them by hand.

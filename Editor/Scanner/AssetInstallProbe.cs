@@ -2,8 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
-using System.Text.RegularExpressions;
-using Newtonsoft.Json.Linq;
 using UnityEngine;
 
 namespace PSV.Installer.Scanner
@@ -19,9 +17,6 @@ namespace PSV.Installer.Scanner
     /// seen. UPM packages also load types, but the classifier only consults this when the package is
     /// ABSENT from the manifest, so a positive means a non-UPM copy in the project.
     ///
-    /// The folder(s) to delete for a migration are found on demand by <see cref="FindRootsForMigration"/>
-    /// (a one-off Assets/ walk matching asmdef name/rootNamespace, DLL file name, and .cs namespace) —
-    /// not during every scan, since reflection alone can't map a namespace back to a folder.
     /// Read-only; never throws.
     /// </summary>
     internal static class AssetInstallProbe
@@ -106,56 +101,6 @@ namespace PSV.Installer.Scanner
             return null;
         }
 
-        // ── Migration roots (file walk, on demand) ───────────────────────────
-
-        /// <summary>
-        /// Finds the top-level <c>Assets/</c> folders (relative to Assets/) that hold this SDK, by
-        /// matching asmdef name/rootNamespace, DLL file name, and .cs file namespace against the
-        /// markers. Called only when the user clicks Migrate. Never null.
-        /// </summary>
-        public static List<string> FindRootsForMigration(IReadOnlyList<string> markers)
-        {
-            var roots = new List<string>();
-            if (markers == null || markers.Count == 0) return roots;
-
-            var assetsRoot = Application.dataPath;
-            try
-            {
-                foreach (var file in Directory.EnumerateFiles(assetsRoot, "*.*", SearchOption.AllDirectories))
-                {
-                    var ext = Path.GetExtension(file);
-                    bool hit;
-                    if (string.Equals(ext, ".asmdef", StringComparison.OrdinalIgnoreCase))
-                    {
-                        ReadAsmdef(file, out var name, out var rootNs);
-                        hit = MatchesAny(name, markers) || MatchesAny(rootNs, markers);
-                    }
-                    else if (string.Equals(ext, ".dll", StringComparison.OrdinalIgnoreCase))
-                    {
-                        hit = MatchesAny(Path.GetFileNameWithoutExtension(file), markers);
-                    }
-                    else if (string.Equals(ext, ".cs", StringComparison.OrdinalIgnoreCase))
-                    {
-                        // Namespace first; fall back to the file name for global-namespace SDKs
-                        // (e.g. Tenjin's BaseTenjin.cs / Tenjin.cs declare no namespace), mirroring
-                        // the DLL filename match above so those roots are still located.
-                        hit = MatchesAny(FirstNamespace(file), markers)
-                              || MatchesAny(Path.GetFileNameWithoutExtension(file), markers);
-                    }
-                    else continue;
-
-                    if (!hit) continue;
-                    var root = TopRoot(assetsRoot, file);
-                    if (!string.IsNullOrEmpty(root) && !roots.Contains(root)) roots.Add(root);
-                }
-            }
-            catch
-            {
-                // Read-only probe: any IO failure → return what we found so far.
-            }
-            return roots;
-        }
-
         /// <summary>
         /// Read-only: relative-to-Assets paths of files under <paramref name="relativeDir"/> (e.g.
         /// "Plugins") whose file name matches a marker. Used to SURFACE this SDK's files left in a
@@ -208,56 +153,5 @@ namespace PSV.Installer.Scanner
             return false;
         }
 
-        private static readonly Regex NamespaceRx =
-            new Regex(@"\bnamespace\s+([A-Za-z_][\w.]*)", RegexOptions.Compiled);
-
-        // First declared namespace in a .cs file. Reads only the head of the file (namespaces sit
-        // near the top, after usings) so the on-demand migration walk stays cheap.
-        private static string FirstNamespace(string path)
-        {
-            try
-            {
-                string head;
-                using (var sr = new StreamReader(path))
-                {
-                    var buf = new char[4096];
-                    var n = sr.Read(buf, 0, buf.Length);
-                    head = new string(buf, 0, n);
-                }
-                var m = NamespaceRx.Match(head);
-                return m.Success ? m.Groups[1].Value : null;
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        private static void ReadAsmdef(string path, out string name, out string rootNamespace)
-        {
-            name = null;
-            rootNamespace = null;
-            try
-            {
-                var root = JObject.Parse(File.ReadAllText(path));
-                name = root.Value<string>("name");
-                rootNamespace = root.Value<string>("rootNamespace");
-            }
-            catch
-            {
-                // unreadable / non-JSON asmdef → leave nulls
-            }
-        }
-
-        // Top-level Assets/ folder containing the file (relative to Assets/), or null when the file
-        // sits directly under Assets/ — we never offer to delete loose root-level files as a folder.
-        private static string TopRoot(string assetsRoot, string filePath)
-        {
-            var full = Path.GetFullPath(filePath);
-            if (full.Length <= assetsRoot.Length) return null;
-            var rel = full.Substring(assetsRoot.Length).Replace('\\', '/').TrimStart('/');
-            var slash = rel.IndexOf('/');
-            return slash <= 0 ? null : rel.Substring(0, slash);
-        }
     }
 }
