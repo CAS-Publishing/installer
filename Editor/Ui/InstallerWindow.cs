@@ -258,7 +258,8 @@ namespace PSV.Installer.Ui
 
             if (_report.External != null)
                 foreach (var e in _report.External)
-                    if (e.State != ExternalState.UpmCurrent && e.State != ExternalState.NotInstalled)
+                    if (e.State != ExternalState.UpmCurrent && e.State != ExternalState.NotInstalled
+                                                           && e.State != ExternalState.InstalledLegacy)
                         count++;
 
             if (_report.Uninstalls != null)

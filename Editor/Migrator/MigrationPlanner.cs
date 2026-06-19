@@ -310,6 +310,12 @@ namespace PSV.Installer.Migrator
                     // (WizardActions.MigrateExternal), never part of an Install/Express plan.
                     break;
 
+                case ExternalState.InstalledLegacy:
+                    // A legacy package (e.g. com.psv.tenjin) already provides this SDK. Leave it alone:
+                    // installing the canonical id would duplicate the SDK, and the legacy wrapper's
+                    // namespace may differ. Moving to the canonical split is a separate, deliberate step.
+                    break;
+
                 case ExternalState.NotInstalled:
                     // Ensure the scoped registry is registered, then add the package.
                     if (record?.Scopes != null)

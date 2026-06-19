@@ -33,11 +33,11 @@ namespace PSV.Installer.Tests
                 new object[] { "v", DateTime.UtcNow, packages.ToList(), new List<ExternalScanResult>(), new List<UninstallScanResult>(), groups, "hash", null },
                 null);
 
-        public static ExternalScanResult Ext(string id, ExternalState state) =>
+        public static ExternalScanResult Ext(string id, ExternalState state, string detectedLegacyId = null) =>
             (ExternalScanResult)Activator.CreateInstance(
                 typeof(ExternalScanResult),
                 System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
-                null, new object[] { id, id, state, null }, null);
+                null, new object[] { id, id, state, null, detectedLegacyId }, null);
 
         public static ScanReport WithExternals(IEnumerable<ExternalScanResult> externals) =>
             (ScanReport)Activator.CreateInstance(

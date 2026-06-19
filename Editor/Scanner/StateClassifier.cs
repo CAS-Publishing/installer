@@ -141,6 +141,23 @@ namespace PSV.Installer.Scanner
 
             if (!deps.TryGetValue(record.Id, out var version))
             {
+                // Canonical id absent. A LEGACY package that already provides this SDK (e.g. the bundled
+                // git package com.psv.tenjin) takes precedence — manifest is authoritative, so this beats
+                // reflection (no false-positive) and prevents offering an Install that would duplicate the
+                // SDK. The hub reports InstalledLegacy and offers no action.
+                if (record.LegacyManifestIds != null)
+                {
+                    foreach (var legacyId in record.LegacyManifestIds)
+                    {
+                        if (!string.IsNullOrEmpty(legacyId) && deps.TryGetValue(legacyId, out var legacyVersion))
+                            return new ExternalScanResult(
+                                record.Id, record.DisplayName,
+                                ExternalState.InstalledLegacy,
+                                legacyVersion,
+                                legacyId);
+                    }
+                }
+
                 // Manifest is the source of truth for UPM; if a non-UPM copy is on disk, surface it.
                 if (detectedOutsideUpm)
                     return new ExternalScanResult(

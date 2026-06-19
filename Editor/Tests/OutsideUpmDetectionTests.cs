@@ -112,6 +112,61 @@ namespace PSV.Installer.Tests
             Assert.IsNull(AssetInstallProbe.ReadStaticVersion(null, "SdkVersion"));
             Assert.IsNull(AssetInstallProbe.ReadStaticVersion("PSV.Installer.Tests.FakeSdkVersion", ""));
         }
+
+        // ── InstalledLegacy: a legacy manifest package provides the SDK ──
+        // A bundled legacy package (e.g. com.psv.tenjin) in the manifest means the SDK already works;
+        // the hub must report InstalledLegacy and offer no action (canonical install would duplicate it).
+
+        [Test]
+        public void External_installedLegacy_when_legacy_id_in_manifest()
+        {
+            var manifest = ManifestData.FromJObject(JObject.Parse(
+                "{\"dependencies\":{\"com.psv.tenjin\":\"https://x.git#1.1.0\"}}"));
+            var rec = new ExternalRecord
+            {
+                Id = "com.tenjin.sdk", DisplayName = "Tenjin",
+                LegacyManifestIds = new System.Collections.Generic.List<string> { "com.psv.tenjin" },
+            };
+
+            var res = StateClassifier.Classify(rec, manifest, detectedOutsideUpm: false);
+
+            Assert.AreEqual(ExternalState.InstalledLegacy, res.State);
+            Assert.AreEqual("com.psv.tenjin", res.DetectedLegacyId);
+        }
+
+        [Test]
+        public void External_legacy_wins_over_reflection_detection()
+        {
+            // Manifest legacy id beats a reflection out-of-UPM hit → no false-positive, no dup install.
+            var manifest = ManifestData.FromJObject(JObject.Parse(
+                "{\"dependencies\":{\"com.psv.tenjin\":\"https://x.git#1.1.0\"}}"));
+            var rec = new ExternalRecord
+            {
+                Id = "com.tenjin.sdk", DisplayName = "Tenjin",
+                LegacyManifestIds = new System.Collections.Generic.List<string> { "com.psv.tenjin" },
+            };
+
+            var res = StateClassifier.Classify(rec, manifest, detectedOutsideUpm: true);
+
+            Assert.AreEqual(ExternalState.InstalledLegacy, res.State);
+        }
+
+        [Test]
+        public void External_canonical_id_wins_over_legacy()
+        {
+            // Already on the canonical SDK → UpmCurrent, not InstalledLegacy.
+            var manifest = ManifestData.FromJObject(JObject.Parse(
+                "{\"dependencies\":{\"com.tenjin.sdk\":\"1.15.14\",\"com.psv.tenjin\":\"https://x.git#1.1.0\"}}"));
+            var rec = new ExternalRecord
+            {
+                Id = "com.tenjin.sdk", DisplayName = "Tenjin", Scopes = null,
+                LegacyManifestIds = new System.Collections.Generic.List<string> { "com.psv.tenjin" },
+            };
+
+            var res = StateClassifier.Classify(rec, manifest, detectedOutsideUpm: false);
+
+            Assert.AreEqual(ExternalState.UpmCurrent, res.State);
+        }
     }
 
     /// <summary>Stand-in for an SDK that exposes its version via a static const string (e.g. Firebase's

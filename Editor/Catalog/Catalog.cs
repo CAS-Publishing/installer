@@ -84,6 +84,17 @@ namespace PSV.Installer.Catalog
         [JsonProperty("assetMarkers")]       public List<string> AssetMarkers;
 
         /// <summary>
+        /// Optional manifest dependency ids that are a LEGACY form of this SDK — a different package
+        /// that already provides it (e.g. the bundled git package <c>com.psv.tenjin</c> for Tenjin).
+        /// When manifest.json contains one of these (and not the canonical <see cref="Id"/>), the SDK
+        /// is already working, so the scanner reports <see cref="Scanner.ExternalState.InstalledLegacy"/>
+        /// and the hub offers no Install/Migrate (installing the canonical id would duplicate the SDK;
+        /// the legacy wrapper's namespace may also differ). Manifest is authoritative, so this also
+        /// avoids reflection false-positives. Absent → no legacy recognition.
+        /// </summary>
+        [JsonProperty("legacyManifestIds")]  public List<string> LegacyManifestIds;
+
+        /// <summary>
         /// Optional git-install chain for this component. When the Git method is chosen, the
         /// installer writes one git-URL dependency per entry here (top-level + transitive),
         /// with no scoped registry. Absent → git method falls back to UPM for this component.

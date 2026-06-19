@@ -831,7 +831,8 @@ namespace PSV.Installer.Ui
 
             if (report.External != null)
                 foreach (var e in report.External)
-                    if (e != null && e.State != ExternalState.UpmCurrent)
+                    if (e != null && e.State != ExternalState.UpmCurrent
+                                  && e.State != ExternalState.InstalledLegacy)
                         return true;
 
             if (report.Uninstalls != null)
@@ -909,6 +910,8 @@ namespace PSV.Installer.Ui
                     return $"<color={ColourGreen}>[Installed ✓]</color>";
                 case ExternalState.ScopeMissing:
                     return $"<color={ColourYellow}>[Needs registry setup]</color>";
+                case ExternalState.InstalledLegacy:
+                    return $"<color={ColourGreen}>[Installed (legacy)]</color>";
                 case ExternalState.NotInstalled:
                 default:
                     return $"<color={ColourGrey}>[Not installed]</color>";

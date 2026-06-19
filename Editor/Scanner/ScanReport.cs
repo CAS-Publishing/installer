@@ -91,6 +91,16 @@ namespace PSV.Installer.Scanner
         /// blocks Install and offers Migrate-to-UPM instead.
         /// </summary>
         InstalledOutsideUpm,
+
+        /// <summary>
+        /// Not on the canonical UPM id, but a LEGACY package that already provides this SDK is present
+        /// in manifest (a catalog <c>legacyManifestIds</c> entry, e.g. the bundled git package
+        /// <c>com.psv.tenjin</c>). The SDK already works, so the hub reports it as installed (legacy)
+        /// and offers NO Install/Migrate — installing the canonical id would duplicate the SDK
+        /// (CS0101/CS0433) and the legacy wrapper's namespace may differ. Moving to the canonical
+        /// split is a separate, deliberate migration.
+        /// </summary>
+        InstalledLegacy,
     }
 
     // ── Per-package results ──────────────────────────────────────────────────
@@ -161,16 +171,25 @@ namespace PSV.Installer.Scanner
         /// <summary>Version string found in manifest.json, or null when not installed.</summary>
         public string DetectedVersion { get; }
 
+        /// <summary>
+        /// The legacy manifest id that provides this SDK (e.g. "com.psv.tenjin"), set only when
+        /// <see cref="State"/> is <see cref="ExternalState.InstalledLegacy"/>; null otherwise.
+        /// Used by the UI to tell the user which package currently provides the SDK.
+        /// </summary>
+        public string DetectedLegacyId { get; }
+
         internal ExternalScanResult(
             string id,
             string displayName,
             ExternalState state,
-            string detectedVersion)
+            string detectedVersion,
+            string detectedLegacyId = null)
         {
             Id = id;
             DisplayName = displayName;
             State = state;
             DetectedVersion = detectedVersion;
+            DetectedLegacyId = detectedLegacyId;
         }
     }
 

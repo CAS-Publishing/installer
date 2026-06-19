@@ -152,6 +152,11 @@ namespace PSV.Installer.Wizard
                 case ExternalState.InstalledOutsideUpm:
                     s.Tone = "yellow"; s.StatusText = "Installed (manual)"; s.ActionText = "Migrate to UPM"; s.ActionVariant = "warn"; s.Actionable = true;
                     s.OutsideUpm = true; break;
+                case ExternalState.InstalledLegacy:
+                    // A legacy package already provides this SDK — report it as installed, no action
+                    // (installing the canonical id would duplicate the SDK / break the legacy wrapper).
+                    s.Tone = "green"; s.StatusText = "Installed (legacy)";
+                    s.ActionText = e.DetectedLegacyId ?? "legacy package"; s.ActionVariant = "muted"; s.Actionable = false; break;
                 case ExternalState.NotInstalled:
                 default:
                     s.Tone = "red";    s.StatusText = "Not Installed";  s.ActionText = "Install";    s.ActionVariant = "primary"; s.Actionable = true;  break;
