@@ -123,6 +123,16 @@ namespace PSV.Installer.Catalog
         [JsonProperty("assetRoots")]         public List<string> AssetRoots;
 
         /// <summary>
+        /// Individual SDK files the manual (.unitypackage) install SCATTERS outside <see cref="AssetRoots"/>
+        /// into shared folders (e.g. Tenjin's <c>BuildPostProcessor.cs</c> / <c>Dependencies.xml</c> dropped
+        /// into <c>Assets/Editor</c>). Each is matched by file NAME + a CONTENT signature (all
+        /// <see cref="LegacyAssetFile.Contains"/> markers must appear) so a user's unrelated file of the
+        /// same name is never touched. Found anywhere under Assets/ (outside <see cref="AssetRoots"/>) and
+        /// surfaced in the migrate confirm window for the user to approve before deletion. Absent → none.
+        /// </summary>
+        [JsonProperty("legacyAssetFiles")]   public List<LegacyAssetFile> LegacyAssetFiles;
+
+        /// <summary>
         /// Optional static string member exposing the SDK's own version at runtime, used to detect a
         /// DOWNGRADE before migrating a manual (Assets) install to the catalog-pinned UPM version.
         /// Read by reflection from the LOADED manual copy as <c>VersionType.VersionField</c> (a static
@@ -148,6 +158,22 @@ namespace PSV.Installer.Catalog
         /// <summary>Optional post-install configuration requirements (per platform), used to
         /// render the Setup readiness checklist. Absent → no config to verify.</summary>
         [JsonProperty("config")]             public List<ConfigRequirement> Config;
+    }
+
+    /// <summary>
+    /// A single scattered legacy SDK file to find and remove on migration (see
+    /// <see cref="ExternalRecord.LegacyAssetFiles"/>). Matched by exact file <see cref="Name"/> AND
+    /// every marker in <see cref="Contains"/> appearing in the file's text — name alone is never
+    /// enough, so a user's same-named file is safe.
+    /// </summary>
+    public sealed class LegacyAssetFile
+    {
+        /// <summary>Exact file name to look for, e.g. "BuildPostProcessor.cs".</summary>
+        [JsonProperty("name")]     public string Name;
+
+        /// <summary>Content markers that must ALL appear in the file for it to count as this SDK's
+        /// (e.g. ["class BuildPostProcessor", "TenjinSDK"]). Empty → name-only (discouraged).</summary>
+        [JsonProperty("contains")] public List<string> Contains;
     }
 
     /// <summary>

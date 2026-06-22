@@ -154,6 +154,15 @@ namespace PSV.Installer.Wizard
             // file-walk: a folder can never be inferred from a stray user script, so user folders
             // (Assets/Scripts, …) can never be targeted.
             var deletePaths = AssetProbe.FindExisting(rec.AssetRoots);
+
+            // The manual (.unitypackage) install also SCATTERS individual SDK files outside the owned
+            // roots — e.g. Tenjin's BuildPostProcessor.cs / Dependencies.xml dropped into Assets/Editor.
+            // Find them by file name + content signature (so a user's same-named file is never touched)
+            // and fold them into the delete set, so they're shown in the confirm window and removed too
+            // (a leftover BuildPostProcessor re-adds a stale [PostProcessBuild] and breaks the iOS build).
+            foreach (var f in AssetInstallProbe.FindSignatureFiles(rec.LegacyAssetFiles, rec.AssetRoots))
+                if (!deletePaths.Contains(f)) deletePaths.Add(f);
+
             if (deletePaths.Count == 0)
             {
                 EditorUtility.DisplayDialog("PSV Installer",

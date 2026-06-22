@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using PSV.Installer.Catalog;
 using UnityEngine;
 
 namespace PSV.Installer.Scanner
@@ -135,6 +136,91 @@ namespace PSV.Installer.Scanner
             {
                 // Read-only probe: any IO failure → return what we found so far.
             }
+            return hits;
+        }
+
+        // ── Scattered legacy files (name + content signature) ───────────────
+
+        /// <summary>
+        /// True when <paramref name="fileName"/> equals the signature's <see cref="LegacyAssetFile.Name"/>
+        /// (case-insensitive) AND <paramref name="content"/> contains EVERY one of its
+        /// <see cref="LegacyAssetFile.Contains"/> markers (ordinal, they're code identifiers). Name match
+        /// alone is never enough — a user's same-named file without the markers is rejected. An empty
+        /// markers list falls back to name-only (discouraged). Never throws.
+        /// </summary>
+        internal static bool MatchesSignature(string fileName, string content, LegacyAssetFile signature)
+        {
+            if (signature == null || string.IsNullOrEmpty(signature.Name)) return false;
+            if (!string.Equals(fileName, signature.Name, StringComparison.OrdinalIgnoreCase)) return false;
+            if (signature.Contains == null || signature.Contains.Count == 0) return true;
+            if (content == null) return false;
+            foreach (var marker in signature.Contains)
+            {
+                if (string.IsNullOrEmpty(marker)) continue;
+                if (content.IndexOf(marker, StringComparison.Ordinal) < 0) return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Read-only: relative-to-Assets paths of files anywhere under Assets/ that match one of
+        /// <paramref name="signatures"/> by name + content (see <see cref="MatchesSignature"/>), EXCLUDING
+        /// anything already under <paramref name="excludeRoots"/> (those are removed as whole folders). Used
+        /// to find SDK files a manual install scattered into shared folders (e.g. Assets/Editor) so migration
+        /// can offer to remove them. <c>.meta</c> files are skipped (Unity deletes them with the asset).
+        /// Capped at <paramref name="max"/>. Never throws.
+        /// </summary>
+        public static List<string> FindSignatureFiles(
+            IReadOnlyList<LegacyAssetFile> signatures,
+            IReadOnlyList<string> excludeRoots,
+            int max = 50)
+        {
+            var hits = new List<string>();
+            if (signatures == null || signatures.Count == 0) return hits;
+
+            var assetsRoot = Application.dataPath.Replace('\\', '/').TrimEnd('/');
+            if (!Directory.Exists(assetsRoot)) return hits;
+
+            var excluded = new List<string>();
+            if (excludeRoots != null)
+                foreach (var r in excludeRoots)
+                    if (!string.IsNullOrEmpty(r))
+                        excluded.Add(Path.GetFullPath(Path.Combine(assetsRoot, r)).Replace('\\', '/').TrimEnd('/'));
+
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(assetsRoot, "*.*", SearchOption.AllDirectories))
+                {
+                    if (string.Equals(Path.GetExtension(file), ".meta", StringComparison.OrdinalIgnoreCase)) continue;
+
+                    var fileName = Path.GetFileName(file);
+                    var nameMatch = false;
+                    foreach (var sig in signatures)
+                        if (sig != null && string.Equals(fileName, sig.Name, StringComparison.OrdinalIgnoreCase)) { nameMatch = true; break; }
+                    if (!nameMatch) continue;
+
+                    var fullFwd = Path.GetFullPath(file).Replace('\\', '/');
+
+                    var inExcluded = false;
+                    foreach (var ex in excluded)
+                        if (fullFwd.Equals(ex, StringComparison.OrdinalIgnoreCase) ||
+                            fullFwd.StartsWith(ex + "/", StringComparison.OrdinalIgnoreCase)) { inExcluded = true; break; }
+                    if (inExcluded) continue;
+
+                    string content;
+                    try { content = File.ReadAllText(file); } catch { continue; }
+
+                    foreach (var sig in signatures)
+                    {
+                        if (!MatchesSignature(fileName, content, sig)) continue;
+                        if (fullFwd.Length <= assetsRoot.Length) break;
+                        hits.Add(fullFwd.Substring(assetsRoot.Length).TrimStart('/'));
+                        break;
+                    }
+                    if (hits.Count >= max) break;
+                }
+            }
+            catch { /* read-only probe: return what we found */ }
             return hits;
         }
 

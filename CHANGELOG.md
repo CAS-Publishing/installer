@@ -2,6 +2,16 @@
 
 All notable changes to this package will be documented in this file.
 
+## [0.0.1-preview.23] - 2026-06-22
+
+- **Fix: migrating a manual (.unitypackage) SDK now removes files it scattered outside its owned
+  folders.** New catalog field `legacyAssetFiles` (file name + content markers) lets the migrator
+  find SDK files dropped into shared folders (e.g. Tenjin's `BuildPostProcessor.cs` /
+  `Dependencies.xml` in `Assets/Editor`) anywhere under `Assets/`, matched by name **and** content
+  so a user's same-named file is never touched, and delete them with confirmation. Previously a
+  leftover `BuildPostProcessor` re-added a stale `[PostProcessBuild]` and broke the iOS build.
+  (Requires metadata that declares `legacyAssetFiles` — ships in installer.metadata ≥ 0.0.2-preview.17.)
+
 ## [0.0.1-preview.22] - 2026-06-22
 
 - **Docs:** README now documents all install routes — UPM scoped registry (Unity UI or manual
