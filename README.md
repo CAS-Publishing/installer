@@ -14,12 +14,24 @@ editing `Packages/manifest.json` by hand**.
 
 ## Installing
 
-There are two supported ways in. Pick **A** for any project that already uses UPM; pick **B** for
-legacy projects you want to onboard with zero manual steps.
+Three supported ways in:
 
-### A. Via UPM (scoped registry)
+- **A — Via UPM (npm scoped registry).** The normal path for projects already on UPM. Two
+  interchangeable routes: the Unity UI (A1) or editing `manifest.json` (A2).
+- **B — Via Git URL.** No registry to register; Unity pulls the package straight from the public
+  GitHub mirror. Good for a quick try or CI.
+- **C — Via the bootstrap `.unitypackage`.** Zero-config onboarding for legacy clients.
 
-This is the normal path. You add the PSV registry once, then add the package by name.
+Whichever you pick, on first run the installer pulls its metadata catalog and opens the wizard
+automatically — you never edit `manifest.json` for the SDK components themselves.
+
+> You only ever register the `com.psvgamestudio` scope (route A) to get the installer itself. The
+> extra scopes for CAS / Tenjin / Firebase (`com.cleversolutions`, `com.tenjin`, `com.google`) are
+> added **for you** by the installer when you install those components.
+
+### A. Via UPM (npm scoped registry)
+
+#### A1 — Unity UI
 
 1. **Add the scoped registry.** `Edit → Project Settings → Package Manager → Scoped Registries → +`
 
@@ -37,17 +49,11 @@ This is the normal path. You add the PSV registry once, then add the package by 
    com.psvgamestudio.installer
    ```
 
-   Leave the version field empty to get the latest. Unity resolves the installer and its
-   dependencies (Newtonsoft Json); the installer then pulls its metadata catalog and opens the
-   wizard automatically on first run.
+   Leave the version field empty to get the latest (or type a version, e.g. `0.0.1-preview.21`).
 
-> You only need the `com.psvgamestudio` scope to install the installer itself. The extra scopes for
-> CAS / Tenjin / Firebase (`com.cleversolutions`, `com.tenjin`, `com.google`) are added **for you**
-> by the installer when you install those components — you don't have to register them manually.
+#### A2 — Edit `manifest.json`
 
-#### Equivalent manual `manifest.json`
-
-If you prefer editing the manifest directly, the registry + dependency look like this:
+Add the registry and the dependency to `Packages/manifest.json` directly:
 
 ```jsonc
 {
@@ -59,12 +65,49 @@ If you prefer editing the manifest directly, the registry + dependency look like
     }
   ],
   "dependencies": {
-    "com.psvgamestudio.installer": "0.0.1-preview.15"
+    "com.psvgamestudio.installer": "0.0.1-preview.21"
   }
 }
 ```
 
-### B. Via the bootstrap `.unitypackage` (zero-config)
+Save the file — Unity resolves the installer (and its Newtonsoft Json dependency) on focus.
+
+### B. Via Git URL
+
+No scoped registry needed — the package is mirrored to a public GitHub repo. Two interchangeable
+routes again:
+
+#### B1 — Unity UI
+
+`Window → Package Manager → +  → Add package from git URL…`, then paste:
+
+```
+https://github.com/CAS-Publishing/installer.git
+```
+
+Omit the suffix to track the mirror's default branch (the latest release), or pin a specific
+release with `#<version>`:
+
+```
+https://github.com/CAS-Publishing/installer.git#0.0.1-preview.21
+```
+
+#### B2 — Edit `manifest.json`
+
+Add a git dependency (no `scopedRegistries` entry required):
+
+```jsonc
+{
+  "dependencies": {
+    "com.psvgamestudio.installer": "https://github.com/CAS-Publishing/installer.git#0.0.1-preview.21"
+  }
+}
+```
+
+> Git installs land in `Library/PackageCache` and are **not** auto-updated by the **About** tab's
+> self-update (that path is UPM-only). To move to a newer release, change the `#<version>` tag.
+
+### C. Via the bootstrap `.unitypackage` (zero-config)
 
 For legacy clients (or anyone you don't want to walk through registry setup), distribute the tiny
 **bootstrap `.unitypackage`**. See [Distributing via the bootstrapper](#distributing-via-the-bootstrapper)

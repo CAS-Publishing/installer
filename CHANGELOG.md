@@ -2,6 +2,11 @@
 
 All notable changes to this package will be documented in this file.
 
+## [0.0.1-preview.22] - 2026-06-22
+
+- **Docs:** README now documents all install routes — UPM scoped registry (Unity UI or manual
+  `manifest.json`), Git URL (Unity UI or manual), and the bootstrap `.unitypackage`. No code change.
+
 ## [0.0.1-preview.21] - 2026-06-22
 
 - **Fix: wizard "Remove" now works for packages installed under a legacy id.** The Remove button
