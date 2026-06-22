@@ -143,7 +143,9 @@ namespace PSV.Installer.Wizard
             {
                 var remove = new Button(() =>
                 {
-                    if (WizardActions.Remove(c.Id, c.DisplayName))
+                    // Target the id actually in manifest.json (legacy id when present under one),
+                    // else removal silently no-ops — the "delete does nothing" bug.
+                    if (WizardActions.Remove(c.InstalledId, c.DisplayName))
                         Rebuild();
                 })
                 { text = "Remove" };

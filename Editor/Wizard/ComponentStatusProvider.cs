@@ -11,6 +11,13 @@ namespace PSV.Installer.Wizard
     internal sealed class ComponentStatus
     {
         public string Id;
+        /// <summary>
+        /// The package id ACTUALLY present in manifest.json — equals <see cref="Id"/> for a canonical
+        /// install, but the detected legacy id when the SDK is present under a legacy id (e.g.
+        /// <c>com.psv.tenjin</c> for an InstalledLegacy Tenjin, or a legacy npm id for a LegacyUpm
+        /// package). The wizard "Remove" button targets THIS id so removal isn't a silent no-op.
+        /// </summary>
+        public string InstalledId;
         public string DisplayName;
         public string Sub;
         public string Logo;          // logo modifier suffix → .cas-logo--<Logo>
@@ -109,13 +116,17 @@ namespace PSV.Installer.Wizard
         }
 
         private static ComponentStatus Base(in (string Id, string Name, string Sub, string Logo) d) =>
-            new ComponentStatus { Id = d.Id, DisplayName = d.Name, Sub = d.Sub, Logo = d.Logo };
+            new ComponentStatus { Id = d.Id, InstalledId = d.Id, DisplayName = d.Name, Sub = d.Sub, Logo = d.Logo };
 
-        private static ComponentStatus FromPackage(in (string Id, string Name, string Sub, string Logo) d, PackageScanResult p)
+        internal static ComponentStatus FromPackage(in (string Id, string Name, string Sub, string Logo) d, PackageScanResult p)
         {
             var s = Base(d);
             s.Version = p.DetectedVersion;
             s.Installed = p.State != PackageState.NotInstalled;
+            // When the package is present under a legacy npm id (LegacyUpm), Remove must target that
+            // id — removing the canonical id would be a silent no-op.
+            if (!string.IsNullOrEmpty(p.DetectedLegacyNpmId))
+                s.InstalledId = p.DetectedLegacyNpmId;
             switch (p.State)
             {
                 case PackageState.UpmCurrent:
@@ -138,11 +149,15 @@ namespace PSV.Installer.Wizard
             return s;
         }
 
-        private static ComponentStatus FromExternal(in (string Id, string Name, string Sub, string Logo) d, ExternalScanResult e)
+        internal static ComponentStatus FromExternal(in (string Id, string Name, string Sub, string Logo) d, ExternalScanResult e)
         {
             var s = Base(d);
             s.Version = e.DetectedVersion;
             s.Installed = e.State != ExternalState.NotInstalled;
+            // A legacy package provides the SDK under a different manifest id (e.g. com.psv.tenjin).
+            // Remove must target the id actually in the manifest, not the canonical catalog id.
+            if (e.State == ExternalState.InstalledLegacy && !string.IsNullOrEmpty(e.DetectedLegacyId))
+                s.InstalledId = e.DetectedLegacyId;
             switch (e.State)
             {
                 case ExternalState.UpmCurrent:

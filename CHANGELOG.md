@@ -2,6 +2,14 @@
 
 All notable changes to this package will be documented in this file.
 
+## [0.0.1-preview.21] - 2026-06-22
+
+- **Fix: wizard "Remove" now works for packages installed under a legacy id.** The Remove button
+  passed the canonical catalog id, but a package present under a legacy id (e.g. Tenjin as the git
+  package `com.psv.tenjin`, or a `LegacyUpm` PSV package) lives under that id in `manifest.json` —
+  so removal silently no-op'd and the button appeared dead. `ComponentStatus` now carries the
+  actually-installed id and Remove targets it.
+
 ## [0.0.1-preview.16] - 2026-06-10
 
 A large release: Welcome UX refinements, out-of-UPM detection, and two new git capabilities.
