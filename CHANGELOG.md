@@ -2,6 +2,24 @@
 
 All notable changes to this package will be documented in this file.
 
+## [0.0.1-preview.24] - 2026-06-23
+
+- **Fix: external SDKs installed via `.unitypackage` are detected even when the project doesn't
+  compile.** Out-of-UPM detection previously relied solely on reflection over loaded types, which is
+  blind when the manual copy fails to compile — exactly the messy projects that most need migrating —
+  so e.g. CAS in `Assets/CleverAdsSolutions` read as "not installed" and the hub offered an Install
+  that duplicated it (only metadata files landed; the rest conflicted with the existing copy). Added a
+  disk fallback: an SDK-identity folder (an `assetRoots` entry whose name matches a marker, so shared
+  satellites like EDM/PlayServicesResolver never false-positive) or a signatured scattered file
+  anywhere under `Assets/`. The hub now offers Migrate (which removes the manual copy first) instead.
+- **Fix: migrating no longer downgrades a newer manual install (version parity).** When the manual
+  copy reports a version (via the catalog's `versionType`/`versionField`) NEWER than the catalog pin,
+  migration installs THAT exact version from our registry/git — same version, new source — instead of
+  the pinned (older) one. The downgrade warning is gone (migration can no longer downgrade). Fixes
+  Firebase 13.6.0 being silently downgraded to a 13.1.0 pin.
+- Pairs with installer.metadata ≥ 0.0.2-preview.18 (adds Tenjin RUNTIME-script signatures so a Tenjin
+  moved to a non-standard path, e.g. `Assets/Scripts/Core/Tenjin`, is removed on migrate).
+
 ## [0.0.1-preview.23] - 2026-06-22
 
 - **Fix: migrating a manual (.unitypackage) SDK now removes files it scattered outside its owned

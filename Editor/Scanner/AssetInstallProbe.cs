@@ -69,6 +69,29 @@ namespace PSV.Installer.Scanner
         }
 
         /// <summary>
+        /// Disk-presence fallback for out-of-UPM detection: true when one of <paramref name="existingRoots"/>
+        /// (already filtered to those that exist, e.g. from <see cref="AssetProbe.FindExisting"/>) is an
+        /// SDK-IDENTITY folder — its last path segment matches one of <paramref name="markers"/>. Gating by
+        /// marker (not "any root exists") is deliberate: <see cref="Catalog.ExternalRecord.AssetRoots"/> also
+        /// lists SHARED satellite folders (ExternalDependencyManager, PlayServicesResolver) that other SDKs
+        /// drop too — those must never mark THIS SDK present. Catches a manual (.unitypackage) install whose
+        /// types aren't loaded (e.g. the project doesn't compile), where reflection alone is blind. Never throws.
+        /// </summary>
+        internal static bool AnyIdentityRootExists(IReadOnlyList<string> existingRoots, IReadOnlyList<string> markers)
+        {
+            if (existingRoots == null || markers == null || markers.Count == 0) return false;
+            foreach (var root in existingRoots)
+            {
+                if (string.IsNullOrEmpty(root)) continue;
+                var normalized = root.Replace('\\', '/').TrimEnd('/');
+                var slash = normalized.LastIndexOf('/');
+                var segment = slash >= 0 ? normalized.Substring(slash + 1) : normalized;
+                if (MatchesAny(segment, markers)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
         /// Reads a static string version member <c>typeFullName.memberName</c> (field, property, or const)
         /// from any loaded assembly via reflection — i.e. the version a manually-installed SDK reports at
         /// runtime. Used to detect a downgrade before migrating that manual copy to a pinned UPM version.

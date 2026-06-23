@@ -57,6 +57,44 @@ namespace PSV.Installer.Tests
             Assert.IsTrue(AssetInstallProbe.IsPresentInIdentifiers(ids, new[] { "Tenjin" }));
         }
 
+        // ── AnyIdentityRootExists: disk-presence fallback for out-of-UPM detection ──
+        // When a manual (.unitypackage) SDK doesn't compile/load, reflection is blind. An SDK-identity
+        // folder on disk (its name matches a marker) is the fallback signal — but NOT shared satellite
+        // folders (EDM / PlayServicesResolver) that assetRoots also lists.
+
+        [Test]
+        public void AnyIdentityRootExists_true_when_root_segment_matches_marker()
+        {
+            // CAS via .unitypackage at Assets/CleverAdsSolutions — the canonical pub_cas1 case.
+            Assert.IsTrue(AssetInstallProbe.AnyIdentityRootExists(
+                new[] { "CleverAdsSolutions" }, new[] { "CleverAdsSolutions" }));
+        }
+
+        [Test]
+        public void AnyIdentityRootExists_false_for_shared_satellite_root()
+        {
+            // EDM / PlayServicesResolver exist whenever ANY SDK that bundles EDM is present — they must
+            // never mark Firebase as installed-outside-UPM on their own (false positive guard).
+            Assert.IsFalse(AssetInstallProbe.AnyIdentityRootExists(
+                new[] { "ExternalDependencyManager", "PlayServicesResolver" }, new[] { "Firebase" }));
+        }
+
+        [Test]
+        public void AnyIdentityRootExists_true_for_nested_identity_segment()
+        {
+            // Firebase's own satellite "Editor Default Resources/Firebase" — last segment matches.
+            Assert.IsTrue(AssetInstallProbe.AnyIdentityRootExists(
+                new[] { "ExternalDependencyManager", "Editor Default Resources/Firebase" }, new[] { "Firebase" }));
+        }
+
+        [Test]
+        public void AnyIdentityRootExists_false_when_null_or_empty()
+        {
+            Assert.IsFalse(AssetInstallProbe.AnyIdentityRootExists(null, new[] { "Firebase" }));
+            Assert.IsFalse(AssetInstallProbe.AnyIdentityRootExists(new[] { "Firebase" }, null));
+            Assert.IsFalse(AssetInstallProbe.AnyIdentityRootExists(new string[0], new[] { "Firebase" }));
+        }
+
         // ── StateClassifier: external out-of-UPM detection ──
 
         [Test]

@@ -60,8 +60,21 @@ namespace PSV.Installer.Scanner
                 foreach (var record in catalog.External)
                 {
                     if (record == null) continue;
-                    var outsideUpm = loadedIdentifiers != null &&
-                                     AssetInstallProbe.IsPresentInIdentifiers(loadedIdentifiers, record.AssetMarkers);
+
+                    // Reflection over loaded types is the primary signal, but it is BLIND when the manual
+                    // (.unitypackage) copy doesn't compile/load — exactly the messy projects that need
+                    // migrating most. Fall back to disk (short-circuited, so the walk only runs when
+                    // reflection misses): an SDK-IDENTITY folder on disk, or a signatured scattered file
+                    // anywhere under Assets/ (catches an SDK moved to a non-standard path, e.g. Tenjin
+                    // relocated to Assets/Scripts/Core/Tenjin). Without this the hub offers a duplicating
+                    // Install instead of Migrate, and the manual copy is never removed.
+                    var outsideUpm =
+                        (loadedIdentifiers != null &&
+                         AssetInstallProbe.IsPresentInIdentifiers(loadedIdentifiers, record.AssetMarkers)) ||
+                        AssetInstallProbe.AnyIdentityRootExists(
+                            AssetProbe.FindExisting(record.AssetRoots), record.AssetMarkers) ||
+                        AssetInstallProbe.FindSignatureFiles(record.LegacyAssetFiles, record.AssetRoots).Count > 0;
+
                     externals.Add(StateClassifier.Classify(record, manifest, outsideUpm));
                 }
             }

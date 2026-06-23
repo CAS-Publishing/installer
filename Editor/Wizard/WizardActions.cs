@@ -144,11 +144,20 @@ namespace PSV.Installer.Wizard
                 return false;
             }
 
+            // Version parity: if the manual copy reports a version (via a catalog-declared static member)
+            // NEWER than the catalog pin, migrate to THAT exact version — same version, just sourced from
+            // our registry/git instead of Assets — so we never silently DOWNGRADE a project already on a
+            // newer build (e.g. Firebase 13.6.0 on disk vs a 13.1.0 pin). The pin stays the floor.
+            string onDiskVersion = null;
+            if (!string.IsNullOrEmpty(rec.VersionType) && !string.IsNullOrEmpty(rec.VersionField))
+                onDiskVersion = AssetInstallProbe.ReadStaticVersion(rec.VersionType, rec.VersionField);
+            var effectiveVersion = ResolveEffectiveVersion(baseVersion, onDiskVersion);
+
             // Which UPM package(s) to install. A multi-module SDK (rec.Modules — e.g. Firebase ships
             // Analytics/RemoteConfig/Installations under one Assets/Firebase folder) installs EVERY
             // module whose markers are detected on disk, so deleting the shared folder doesn't drop
             // modules the project still uses. A single-package external installs just rec.Id.
-            var installs = ResolveInstallSet(rec, baseVersion);
+            var installs = ResolveInstallSet(rec, effectiveVersion);
 
             // Delete ONLY the SDK-owned folders the catalog declares, and only those that exist. No
             // file-walk: a folder can never be inferred from a stray user script, so user folders
@@ -176,23 +185,13 @@ namespace PSV.Installer.Wizard
             // never auto-deleted. Surface matching files so the user can prune them by hand.
             var sharedLeftovers = AssetInstallProbe.FindLooseFiles(rec.AssetMarkers, "Plugins");
 
-            // Downgrade guard: if the manual copy reports a version (via a catalog-declared static member)
-            // NEWER than what we'd install, migrating to the catalog-pinned UPM version would silently
-            // downgrade it — surface that up front so the user decides knowingly.
-            string downgrade = null;
-            if (!string.IsNullOrEmpty(rec.VersionType) && !string.IsNullOrEmpty(rec.VersionField))
-            {
-                var onDisk = AssetInstallProbe.ReadStaticVersion(rec.VersionType, rec.VersionField);
-                if (!string.IsNullOrEmpty(onDisk) && CatalogUpdater.IsNewer(onDisk, baseVersion))
-                    downgrade = $"Your installed {displayName} is {onDisk}, NEWER than the {baseVersion} this " +
-                                "will install — migrating to UPM will DOWNGRADE it.";
-            }
-
-            // Custom, readable confirm window (UI Toolkit) instead of a cramped native text dialog.
+            // Custom, readable confirm window (UI Toolkit) instead of a cramped native text dialog. No
+            // downgrade banner: version parity (above) already pins the install to the on-disk version
+            // when it's newer, so migrating can no longer downgrade — the install lines show the version.
             var installLines = new List<string>(installs.Count);
             foreach (var a in installs) installLines.Add($"{a.Id}@{a.Version}");
 
-            if (!MigrateConfirmWindow.Confirm(displayName, downgrade, installLines, deletePaths, sharedLeftovers))
+            if (!MigrateConfirmWindow.Confirm(displayName, null, installLines, deletePaths, sharedLeftovers))
                 return false;
 
             // STEP 1 — delete the manual copy FIRST. If git can't recover it (untracked/dirty), this
@@ -246,6 +245,23 @@ namespace PSV.Installer.Wizard
                     "\n\nRun Install again from the Components tab.", "OK");
             }
             return true;
+        }
+
+        /// <summary>
+        /// Version parity: which version to actually install when migrating a manual (Assets) copy to UPM.
+        /// When the on-disk SDK reports a version (via a catalog-declared static member) NEWER than the
+        /// catalog pin, we install THAT exact version — just changing the source (Assets → our registry/git),
+        /// never silently DOWNGRADING a project that's already on a newer build. Falls back to the catalog
+        /// <paramref name="baseVersion"/> when the on-disk version is missing or not a valid semver, and is
+        /// never below the pin (the pin stays the floor). Pure/testable.
+        /// </summary>
+        internal static string ResolveEffectiveVersion(string baseVersion, string onDiskVersion)
+        {
+            if (!string.IsNullOrEmpty(onDiskVersion)
+                && SemVer.IsVersion(onDiskVersion)
+                && SemVer.Compare(onDiskVersion, baseVersion) > 0)
+                return onDiskVersion;
+            return baseVersion;
         }
 
         /// <summary>
