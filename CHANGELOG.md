@@ -2,6 +2,12 @@
 
 All notable changes to this package will be documented in this file.
 
+## [0.0.1-preview.25] - 2026-06-23
+
+- **Docs:** refresh the README install-route version examples (UPM / git-URL / manifest snippets) to the
+  current `0.0.1-preview.25`. No code change — preview.24 shipped its tarball with stale `preview.21`
+  examples in the README; this release makes the published README match the package version.
+
 ## [0.0.1-preview.24] - 2026-06-23
 
 - **Fix: external SDKs installed via `.unitypackage` are detected even when the project doesn't

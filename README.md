@@ -49,7 +49,7 @@ automatically — you never edit `manifest.json` for the SDK components themselv
    com.psvgamestudio.installer
    ```
 
-   Leave the version field empty to get the latest (or type a version, e.g. `0.0.1-preview.21`).
+   Leave the version field empty to get the latest (or type a version, e.g. `0.0.1-preview.25`).
 
 #### A2 — Edit `manifest.json`
 
@@ -65,7 +65,7 @@ Add the registry and the dependency to `Packages/manifest.json` directly:
     }
   ],
   "dependencies": {
-    "com.psvgamestudio.installer": "0.0.1-preview.21"
+    "com.psvgamestudio.installer": "0.0.1-preview.25"
   }
 }
 ```
@@ -89,7 +89,7 @@ Omit the suffix to track the mirror's default branch (the latest release), or pi
 release with `#<version>`:
 
 ```
-https://github.com/CAS-Publishing/installer.git#0.0.1-preview.21
+https://github.com/CAS-Publishing/installer.git#0.0.1-preview.25
 ```
 
 #### B2 — Edit `manifest.json`
@@ -99,7 +99,7 @@ Add a git dependency (no `scopedRegistries` entry required):
 ```jsonc
 {
   "dependencies": {
-    "com.psvgamestudio.installer": "https://github.com/CAS-Publishing/installer.git#0.0.1-preview.21"
+    "com.psvgamestudio.installer": "https://github.com/CAS-Publishing/installer.git#0.0.1-preview.25"
   }
 }
 ```
