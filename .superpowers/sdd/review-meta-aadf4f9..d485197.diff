@@ -1,0 +1,66 @@
+=== commits ===
+d485197 chore(metadata): declare CAS-ID regex/hint per platform
+
+=== stat ===
+ CHANGELOG.md | 5 +++++
+ catalog.json | 4 ++--
+ package.json | 2 +-
+ 3 files changed, 8 insertions(+), 3 deletions(-)
+
+=== diff -U6 ===
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 25a9a4d..d737e14 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,10 +1,15 @@
+ # Changelog
+ 
+ All notable changes to this package will be documented in this file.
+ 
++## [0.0.2-preview.20] - 2026-06-29
++
++- **CAS-ID validation hints:** declare per-platform `regex` + `hint` on the CAS `config` rows
++  (Android bundle / iOS numeric) so the installer's Welcome validation is catalog-driven.
++
+ ## [0.0.2-preview.19] - 2026-06-29
+ 
+ - **CAS pin → 4.7.4:** bump CAS `recommendedVersion` and git tag from 4.7.0 to the current stable 4.7.4.
+   Aligns the hub install with CAS's own stable channel (no more pointless in-CAS update nag, #4.3) and
+   picks up CAS's signature fix, clearing the "Missing signature" warning that came from 4.7.0 (#5).
+ 
+diff --git a/catalog.json b/catalog.json
+index 09fb171..12811c6 100644
+--- a/catalog.json
++++ b/catalog.json
+@@ -47,14 +47,14 @@
+       "git": {
+         "packages": [
+           { "id": "com.cleversolutions.ads.unity", "url": "https://github.com/cleveradssolutions/CAS-Unity.git", "tag": "4.7.4" }
+         ]
+       },
+       "config": [
+-        { "platform": "Android", "kind": "settingsAssetField", "assetPath": "Assets/CleverAdsSolutions/Resources/CASSettingsAndroid.asset", "field": "managerIds", "placeholder": "demo", "label": "CAS ID", "openMenu": "Assets/CleverAdsSolutions/Settings" },
+-        { "platform": "iOS",     "kind": "settingsAssetField", "assetPath": "Assets/CleverAdsSolutions/Resources/CASSettingsiOS.asset",     "field": "managerIds", "placeholder": "demo", "label": "CAS ID", "openMenu": "Assets/CleverAdsSolutions/Settings" }
++        { "platform": "Android", "kind": "settingsAssetField", "assetPath": "Assets/CleverAdsSolutions/Resources/CASSettingsAndroid.asset", "field": "managerIds", "placeholder": "demo", "label": "CAS ID", "openMenu": "Assets/CleverAdsSolutions/Settings", "regex": "^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+$", "hint": "com.company.gamename" },
++        { "platform": "iOS",     "kind": "settingsAssetField", "assetPath": "Assets/CleverAdsSolutions/Resources/CASSettingsiOS.asset",     "field": "managerIds", "placeholder": "demo", "label": "CAS ID", "openMenu": "Assets/CleverAdsSolutions/Settings", "regex": "^[0-9]+$", "hint": "1234567890" }
+       ]
+     },
+     {
+       "id": "com.tenjin.sdk",
+       "displayName": "Tenjin SDK",
+       "registry": "psv",
+diff --git a/package.json b/package.json
+index e8767cc..191615d 100644
+--- a/package.json
++++ b/package.json
+@@ -1,9 +1,9 @@
+ {
+   "name": "com.psvgamestudio.installer.metadata",
+-  "version": "0.0.2-preview.19",
++  "version": "0.0.2-preview.20",
+   "displayName": "PSV Installer Metadata",
+   "description": "Dynamic catalog of PSV / CAS packages managed by com.psvgamestudio.installer. Ships separately from the installer so new packages and migration rules reach clients without an installer release.",
+   "unity": "2022.3",
+   "license": "SEE LICENSE IN LICENSE.md",
+   "author": {
+     "name": "PSV Game Studio"

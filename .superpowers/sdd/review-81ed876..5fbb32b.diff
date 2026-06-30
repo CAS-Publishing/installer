@@ -1,0 +1,61 @@
+# Review package: 81ed876..5fbb32b
+
+## Commits
+5fbb32b feat(installer): add PlatformDetect (active build target → platform)
+
+## Files changed
+ Editor/Tests/PlatformDetectTests.cs | 18 ++++++++++++++++++
+ Editor/Wizard/PlatformDetect.cs     | 20 ++++++++++++++++++++
+ 2 files changed, 38 insertions(+)
+
+## Diff
+diff --git a/Editor/Tests/PlatformDetectTests.cs b/Editor/Tests/PlatformDetectTests.cs
+new file mode 100644
+index 0000000..7a24160
+--- /dev/null
++++ b/Editor/Tests/PlatformDetectTests.cs
+@@ -0,0 +1,18 @@
++using NUnit.Framework;
++using UnityEditor;
++using PSV.Installer.Wizard;
++
++namespace PSV.Installer.Tests
++{
++    public class PlatformDetectTests
++    {
++        [Test] public void iOS_target_maps_to_iOS()
++            => Assert.AreEqual("iOS", PlatformDetect.FromBuildTarget(BuildTarget.iOS));
++
++        [Test] public void Android_target_maps_to_Android()
++            => Assert.AreEqual("Android", PlatformDetect.FromBuildTarget(BuildTarget.Android));
++
++        [Test] public void Desktop_target_defaults_to_Android()
++            => Assert.AreEqual("Android", PlatformDetect.FromBuildTarget(BuildTarget.StandaloneWindows64));
++    }
++}
+diff --git a/Editor/Wizard/PlatformDetect.cs b/Editor/Wizard/PlatformDetect.cs
+new file mode 100644
+index 0000000..d8d61a1
+--- /dev/null
++++ b/Editor/Wizard/PlatformDetect.cs
+@@ -0,0 +1,20 @@
++using UnityEditor;
++
++namespace PSV.Installer.Wizard
++{
++    /// <summary>
++    /// Maps the project's active build target to the platform string the wizard uses
++    /// ("Android" | "iOS"). Any non-iOS target (Android and all desktop/other targets)
++    /// maps to "Android" — the single-platform Welcome pass defaults there and stays switchable.
++    /// </summary>
++    internal static class PlatformDetect
++    {
++        /// <summary>Pure mapping: iOS → "iOS", everything else → "Android". Testable.</summary>
++        internal static string FromBuildTarget(BuildTarget target) =>
++            target == BuildTarget.iOS ? "iOS" : "Android";
++
++        /// <summary>The platform for the project's current active build target.</summary>
++        public static string ActivePlatform() =>
++            FromBuildTarget(EditorUserBuildSettings.activeBuildTarget);
++    }
++}

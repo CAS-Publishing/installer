@@ -1,0 +1,660 @@
+# Review package: df4d8b4..HEAD
+
+## Commits
+3929e89 chore(installer): release notes for CAS auto-config (preview.30)
+fab843f feat(installer): CAS ad-format + audience/network controls in Configuration (#4.5)
+4ccfb8f feat(installer): CasMediation reflection — activate OptimalAds/FamiliesAds (#4.5)
+843bd81 fix(installer): CasSettingsWriter sibling-guid reads asset (File.Exists(p)), clearer name
+8465bd4 feat(installer): CasSettingsWriter (allowedAdFlags/audienceTagged + asset create) (#4.5)
+3fab9ca feat(installer): CasAudience pure mapping (Optimal/Families ↔ audienceTagged) (#4.5)
+becac8f feat(installer): AdFlagsBits pure helpers for CAS allowedAdFlags (#4.5)
+
+## Files changed
+ CHANGELOG.md                            |   4 +
+ Editor/Catalog/Catalog.cs               |   3 +
+ Editor/Tests/AdFlagsBitsTests.cs        |  15 ++++
+ Editor/Tests/AdFlagsBitsTests.cs.meta   |  11 +++
+ Editor/Tests/CasAudienceTests.cs        |  14 ++++
+ Editor/Tests/CasAudienceTests.cs.meta   |  11 +++
+ Editor/Wizard/AdFlagsBits.cs            |  16 ++++
+ Editor/Wizard/AdFlagsBits.cs.meta       |   2 +
+ Editor/Wizard/CasAudience.cs            |  17 +++++
+ Editor/Wizard/CasAudience.cs.meta       |   2 +
+ Editor/Wizard/CasMediation.cs           |  90 ++++++++++++++++++++++
+ Editor/Wizard/CasMediation.cs.meta      |   2 +
+ Editor/Wizard/CasSettingsWriter.cs      | 131 ++++++++++++++++++++++++++++++++
+ Editor/Wizard/CasSettingsWriter.cs.meta |   2 +
+ Editor/Wizard/Screens/SetupScreen.cs    |  44 +++++++++++
+ Editor/Wizard/SetupModel.cs             |   9 ++-
+ Editor/Wizard/Uss/theme.uss             |   4 +
+ package.json                            |   2 +-
+ 18 files changed, 377 insertions(+), 2 deletions(-)
+
+## Diff
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 937ba75..a5b2f00 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,14 +1,18 @@
+ # Changelog
+ 
+ All notable changes to this package will be documented in this file.
+ 
++## [0.0.1-preview.30] - 2026-06-29
++
++- Configuration: CAS ad-format toggles + audience/network (Optimal/Families) set, with auto settings-asset create (#4.5).
++
+ ## [0.0.1-preview.29] - 2026-06-29
+ 
+ - Configuration tab: the CAS-ID cell is now inline-editable (writes the managerId directly) (#2.1b).
+ 
+ ## [0.0.1-preview.28] - 2026-06-29
+ 
+ - **Auto-open engine (#7 / WS-2):** after first-run, the installer reopens automatically following an
+   installer-driven install (landing on Components) via a one-shot reload signal — and no longer
+   re-pops on unrelated manual UPM changes.
+ - **Build-target switch (#7):** switching the active build target to Android or iOS, when CAS is
+diff --git a/Editor/Catalog/Catalog.cs b/Editor/Catalog/Catalog.cs
+index 29cd792..651e472 100644
+--- a/Editor/Catalog/Catalog.cs
++++ b/Editor/Catalog/Catalog.cs
+@@ -218,20 +218,23 @@ namespace PSV.Installer.Catalog
+         /// <summary>Optional per-platform validation regex for the wizard input (e.g. CAS bundle/numeric).</summary>
+         [JsonProperty("regex")] public string Regex;
+ 
+         /// <summary>Optional placeholder hint text shown in the empty wizard input.</summary>
+         [JsonProperty("hint")] public string Hint;
+ 
+         /// <summary>When true, the Configuration screen renders this settings field as an editable
+         /// input that writes the value back to the settings asset (e.g. CAS managerId). Default false.</summary>
+         [JsonProperty("editable")] public bool Editable;
+ 
++        /// <summary>When true, the Configuration screen renders CAS ad-format toggles and audience/network controls for this component.</summary>
++        [JsonProperty("adFormats")] public bool AdFormats;
++
+         /// <summary>Optional Unity menu path to open the relevant settings window (e.g. CAS).</summary>
+         [JsonProperty("openMenu")] public string OpenMenu;
+     }
+ 
+     /// <summary>
+     /// Describes a legacy package that should be removed from the client project
+     /// without any replacement. The catalog entry lists the old npm ids that may
+     /// still appear in manifest.json; the migrator removes them.
+     /// </summary>
+     public sealed class UninstallRecord
+diff --git a/Editor/Tests/AdFlagsBitsTests.cs b/Editor/Tests/AdFlagsBitsTests.cs
+new file mode 100644
+index 0000000..f15f583
+--- /dev/null
++++ b/Editor/Tests/AdFlagsBitsTests.cs
+@@ -0,0 +1,15 @@
++using NUnit.Framework;
++using PSV.Installer.Wizard;
++
++namespace PSV.Installer.Tests
++{
++    public class AdFlagsBitsTests
++    {
++        [Test] public void Values() { Assert.AreEqual(1, AdFlagsBits.Banner); Assert.AreEqual(2, AdFlagsBits.Interstitial); Assert.AreEqual(4, AdFlagsBits.Rewarded); Assert.AreEqual(8, AdFlagsBits.AppOpen); }
++        [Test] public void HasFlag_true() => Assert.IsTrue(AdFlagsBits.HasFlag(AdFlagsBits.Banner | AdFlagsBits.Rewarded, AdFlagsBits.Rewarded));
++        [Test] public void HasFlag_false() => Assert.IsFalse(AdFlagsBits.HasFlag(AdFlagsBits.Banner, AdFlagsBits.Rewarded));
++        [Test] public void WithFlag_set() => Assert.AreEqual(AdFlagsBits.Banner | AdFlagsBits.Rewarded, AdFlagsBits.WithFlag(AdFlagsBits.Banner, AdFlagsBits.Rewarded, true));
++        [Test] public void WithFlag_clear() => Assert.AreEqual(AdFlagsBits.Banner, AdFlagsBits.WithFlag(AdFlagsBits.Banner | AdFlagsBits.Rewarded, AdFlagsBits.Rewarded, false));
++        [Test] public void WithFlag_clear_absent_noop() => Assert.AreEqual(AdFlagsBits.Banner, AdFlagsBits.WithFlag(AdFlagsBits.Banner, AdFlagsBits.Rewarded, false));
++    }
++}
+diff --git a/Editor/Tests/AdFlagsBitsTests.cs.meta b/Editor/Tests/AdFlagsBitsTests.cs.meta
+new file mode 100644
+index 0000000..d382e1c
+--- /dev/null
++++ b/Editor/Tests/AdFlagsBitsTests.cs.meta
+@@ -0,0 +1,11 @@
++fileFormatVersion: 2
++guid: c3a5b2d19e4f5b6f0d2c7e8f9a1b3d45
++MonoImporter:
++  externalObjects: {}
++  serializedVersion: 2
++  defaultReferences: []
++  executionOrder: 0
++  icon: {instanceID: 0}
++  userData:
++  assetBundleName:
++  assetBundleVariant:
+diff --git a/Editor/Tests/CasAudienceTests.cs b/Editor/Tests/CasAudienceTests.cs
+new file mode 100644
+index 0000000..a87209c
+--- /dev/null
++++ b/Editor/Tests/CasAudienceTests.cs
+@@ -0,0 +1,14 @@
++using NUnit.Framework;
++using PSV.Installer.Wizard;
++
++namespace PSV.Installer.Tests
++{
++    public class CasAudienceTests
++    {
++        [Test] public void Families_is_children() => Assert.AreEqual(CasAudience.Children, CasAudience.ForFamilies(true));
++        [Test] public void Optimal_is_notchildren() => Assert.AreEqual(CasAudience.NotChildren, CasAudience.ForFamilies(false));
++        [Test] public void IsFamilies_children_true() => Assert.IsTrue(CasAudience.IsFamilies(CasAudience.Children));
++        [Test] public void IsFamilies_notchildren_false() => Assert.IsFalse(CasAudience.IsFamilies(CasAudience.NotChildren));
++        [Test] public void IsFamilies_mixed_false() => Assert.IsFalse(CasAudience.IsFamilies(CasAudience.Mixed));
++    }
++}
+diff --git a/Editor/Tests/CasAudienceTests.cs.meta b/Editor/Tests/CasAudienceTests.cs.meta
+new file mode 100644
+index 0000000..fd19f5f
+--- /dev/null
++++ b/Editor/Tests/CasAudienceTests.cs.meta
+@@ -0,0 +1,11 @@
++fileFormatVersion: 2
++guid: e5c7d4f3b0617d8a2f4e9b0c1d3e5f67
++MonoImporter:
++  externalObjects: {}
++  serializedVersion: 2
++  defaultReferences: []
++  executionOrder: 0
++  icon: {instanceID: 0}
++  userData:
++  assetBundleName:
++  assetBundleVariant:
+diff --git a/Editor/Wizard/AdFlagsBits.cs b/Editor/Wizard/AdFlagsBits.cs
+new file mode 100644
+index 0000000..2fc4a07
+--- /dev/null
++++ b/Editor/Wizard/AdFlagsBits.cs
+@@ -0,0 +1,16 @@
++namespace PSV.Installer.Wizard
++{
++    /// <summary>Pure bit helpers for the CAS <c>allowedAdFlags</c> bitmask. Values mirror CAS's
++    /// <c>AdFlags</c> enum: Banner=1, Interstitial=2, Rewarded=4, AppOpen=8.</summary>
++    internal static class AdFlagsBits
++    {
++        public const int Banner = 1;
++        public const int Interstitial = 2;
++        public const int Rewarded = 4;
++        public const int AppOpen = 8;
++
++        public static bool HasFlag(int mask, int flag) => (mask & flag) == flag && flag != 0;
++
++        public static int WithFlag(int mask, int flag, bool on) => on ? (mask | flag) : (mask & ~flag);
++    }
++}
+diff --git a/Editor/Wizard/AdFlagsBits.cs.meta b/Editor/Wizard/AdFlagsBits.cs.meta
+new file mode 100644
+index 0000000..15d5efe
+--- /dev/null
++++ b/Editor/Wizard/AdFlagsBits.cs.meta
+@@ -0,0 +1,2 @@
++fileFormatVersion: 2
++guid: b2f4a1c08d3e4a5e9c1b6d7e8f0a2c34
+diff --git a/Editor/Wizard/CasAudience.cs b/Editor/Wizard/CasAudience.cs
+new file mode 100644
+index 0000000..66b785b
+--- /dev/null
++++ b/Editor/Wizard/CasAudience.cs
+@@ -0,0 +1,17 @@
++namespace PSV.Installer.Wizard
++{
++    /// <summary>Pure mapping between the installer's Optimal/Families choice and CAS's
++    /// <c>audienceTagged</c> int (enum Audience: Mixed=0, Children=1, NotChildren=2).</summary>
++    internal static class CasAudience
++    {
++        public const int Mixed = 0;
++        public const int Children = 1;
++        public const int NotChildren = 2;
++
++        /// <summary>Families → Children, Optimal → NotChildren.</summary>
++        public static int ForFamilies(bool families) => families ? Children : NotChildren;
++
++        /// <summary>True when the stored audience is the Families (children) value.</summary>
++        public static bool IsFamilies(int audience) => audience == Children;
++    }
++}
+diff --git a/Editor/Wizard/CasAudience.cs.meta b/Editor/Wizard/CasAudience.cs.meta
+new file mode 100644
+index 0000000..048440d
+--- /dev/null
++++ b/Editor/Wizard/CasAudience.cs.meta
+@@ -0,0 +1,2 @@
++fileFormatVersion: 2
++guid: d4b6c3e2af506c7f1e3d8a9b0c2d4e56
+diff --git a/Editor/Wizard/CasMediation.cs b/Editor/Wizard/CasMediation.cs
+new file mode 100644
+index 0000000..ad0ea64
+--- /dev/null
++++ b/Editor/Wizard/CasMediation.cs
+@@ -0,0 +1,90 @@
++using System;
++using System.Reflection;
++using UnityEditor;
++using UnityEngine;
++
++namespace PSV.Installer.Wizard
++{
++    /// <summary>
++    /// Activates a CAS mediation solution (OptimalAds / FamiliesAds) via reflection into CAS's editor
++    /// <c>DependencyManager</c>. Best-effort: any missing CAS type/member logs a warning and returns
++    /// false, so a CAS API change never throws — the installer's asset-field writes still apply.
++    /// The reflected members (Create / solutions / Dependency.id / ActivateDependencies) must be
++    /// confirmed in Unity by the owner; this code never assumes they exist.
++    /// </summary>
++    internal static class CasMediation
++    {
++        private const string OptimalId = "OptimalAds";
++        private const string FamiliesId = "FamiliesAds";
++
++        public static bool SelectSolution(BuildTarget platform, bool families)
++        {
++            try
++            {
++                var dmType = FindType("DependencyManager");
++                if (dmType == null) return Warn("DependencyManager type not found");
++
++                // CAS Audience enum: Mixed=0, Children=1, NotChildren=2.
++                var audienceType = FindType("Audience");
++                if (audienceType == null) return Warn("Audience type not found");
++                var audienceVal = Enum.ToObject(audienceType, families ? 1 : 2);
++
++                var create = dmType.GetMethod("Create", BindingFlags.Public | BindingFlags.Static,
++                    null, new[] { typeof(BuildTarget), audienceType, typeof(bool) }, null);
++                if (create == null) return Warn("DependencyManager.Create(BuildTarget,Audience,bool) not found");
++
++                var manager = create.Invoke(null, new object[] { platform, audienceVal, false });
++                if (manager == null) return Warn("DependencyManager.Create returned null");
++
++                var solutionsMember = dmType.GetField("solutions") != null
++                    ? (MemberInfo)dmType.GetField("solutions")
++                    : dmType.GetProperty("solutions");
++                var solutions = GetValue(solutionsMember, manager) as Array;
++                if (solutions == null) return Warn("solutions not found");
++
++                var wantedId = families ? FamiliesId : OptimalId;
++                foreach (var sol in solutions)
++                {
++                    if (sol == null) continue;
++                    var idMember = (MemberInfo)sol.GetType().GetField("id") ?? sol.GetType().GetProperty("id");
++                    var id = GetValue(idMember, sol) as string;
++                    if (id != wantedId) continue;
++
++                    var activate = sol.GetType().GetMethod("ActivateDependencies");
++                    if (activate == null) return Warn("Dependency.ActivateDependencies not found");
++                    activate.Invoke(sol, new[] { (object)platform, manager });
++                    AssetDatabase.SaveAssets();
++                    return true;
++                }
++                return Warn($"solution '{wantedId}' not present");
++            }
++            catch (Exception e)
++            {
++                return Warn("reflection error: " + e.Message);
++            }
++        }
++
++        private static Type FindType(string simpleName)
++        {
++            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
++            {
++                Type[] types;
++                try { types = asm.GetTypes(); } catch { continue; }
++                foreach (var t in types)
++                    if (t.Name == simpleName && t.Namespace != null && t.Namespace.StartsWith("CAS"))
++                        return t;
++            }
++            return null;
++        }
++
++        private static object GetValue(MemberInfo m, object target) =>
++            m is FieldInfo f ? f.GetValue(target) : (m as PropertyInfo)?.GetValue(target);
++
++        private static bool Warn(string why)
++        {
++            Debug.LogWarning("[PSV Installer] CAS network-set not applied (" + why +
++                "). Ad formats/audience were still written; pick the network set in CAS settings if needed.");
++            return false;
++        }
++    }
++}
+diff --git a/Editor/Wizard/CasMediation.cs.meta b/Editor/Wizard/CasMediation.cs.meta
+new file mode 100644
+index 0000000..e91a69d
+--- /dev/null
++++ b/Editor/Wizard/CasMediation.cs.meta
+@@ -0,0 +1,2 @@
++fileFormatVersion: 2
++guid: a7e9f6b5d2839f0c4b6a1d2e3f5a7b89
+diff --git a/Editor/Wizard/CasSettingsWriter.cs b/Editor/Wizard/CasSettingsWriter.cs
+new file mode 100644
+index 0000000..8e21c84
+--- /dev/null
++++ b/Editor/Wizard/CasSettingsWriter.cs
+@@ -0,0 +1,131 @@
++using System.IO;
++using PSV.Installer.Catalog;
++using UnityEditor;
++using UnityEngine;
++
++namespace PSV.Installer.Wizard
++{
++    /// <summary>
++    /// Reads/writes the CAS per-platform settings asset fields the installer manages
++    /// (<c>allowedAdFlags</c>, <c>audienceTagged</c>) and creates the asset when missing. Reuses the
++    /// catalog CAS config (assetPath/assetType) and the SerializedObject pattern from CasIdApplier.
++    /// </summary>
++    internal static class CasSettingsWriter
++    {
++        private const string CasId = "com.cleversolutions.ads.unity";
++        // Fallback CAS settings script guid (CAS 4.7.x) — used only when no sibling asset exists to copy it from.
++        private const string FallbackScriptGuid = "cd2f38c563828458c8e900006c010cd2";
++
++        private static ConfigRequirement FindCasField(string platform)
++        {
++            var load = CatalogLoader.Load();
++            if (load.Status != CatalogLoadStatus.Ok || load.Catalog?.External == null) return null;
++            foreach (var e in load.Catalog.External)
++            {
++                if (e == null || e.Id != CasId || e.Config == null) continue;
++                foreach (var req in e.Config)
++                    if (req != null && req.Kind == "settingsAssetField" &&
++                        string.Equals(req.Platform, platform, System.StringComparison.OrdinalIgnoreCase))
++                        return req;
++            }
++            return null;
++        }
++
++        public static int ReadAdFlags(string platform) => ReadInt(platform, "allowedAdFlags");
++        public static int ReadAudience(string platform) => ReadInt(platform, "audienceTagged");
++
++        private static int ReadInt(string platform, string field)
++        {
++            var req = FindCasField(platform);
++            if (req == null) return 0;
++            var asset = SetupChecker.LocateAsset(req.AssetPath, req.AssetType);
++            if (asset == null) return 0;
++            var prop = new SerializedObject(asset).FindProperty(field);
++            return prop != null && prop.propertyType == SerializedPropertyType.Integer ? prop.intValue : 0;
++        }
++
++        public static void SetAdFlags(string platform, int flags) => WriteInt(platform, "allowedAdFlags", flags);
++        public static void SetAudience(string platform, int audience) => WriteInt(platform, "audienceTagged", audience);
++
++        private static void WriteInt(string platform, string field, int value)
++        {
++            var req = FindCasField(platform);
++            if (req == null) return;
++            var asset = EnsureAssetAt(req.AssetPath);
++            if (asset == null) return;
++            var so = new SerializedObject(asset);
++            var prop = so.FindProperty(field);
++            if (prop == null || prop.propertyType != SerializedPropertyType.Integer) return;
++            prop.intValue = value;
++            so.ApplyModifiedPropertiesWithoutUndo();
++            EditorUtility.SetDirty(asset);
++            AssetDatabase.SaveAssets();
++        }
++
++        public static Object EnsureAsset(string platform)
++        {
++            var req = FindCasField(platform);
++            return req == null ? null : EnsureAssetAt(req.AssetPath);
++        }
++
++        // Loads the asset at the catalog path, creating it from the CAS settings template when absent.
++        private static Object EnsureAssetAt(string assetPath)
++        {
++            if (string.IsNullOrEmpty(assetPath)) return null;
++            var existing = AssetDatabase.LoadAssetAtPath<Object>(assetPath);
++            if (existing != null) return existing;
++
++            var scriptGuid = SiblingScriptGuid(assetPath) ?? FallbackScriptGuid;
++            var name = Path.GetFileNameWithoutExtension(assetPath);
++            var yaml =
++                "%YAML 1.1\n%TAG !u! tag:unity3d.com,2011:\n--- !u!114 &11400000\nMonoBehaviour:\n" +
++                "  m_ObjectHideFlags: 0\n  m_CorrespondingSourceObject: {fileID: 0}\n" +
++                "  m_PrefabInstance: {fileID: 0}\n  m_PrefabAsset: {fileID: 0}\n  m_GameObject: {fileID: 0}\n" +
++                "  m_Enabled: 1\n  m_EditorHideFlags: 0\n  m_Script: {fileID: 11500000, guid: " + scriptGuid + ", type: 3}\n" +
++                "  m_Name: " + name + "\n  m_EditorClassIdentifier:\n  testAdMode: 0\n  managerIds:\n  - demo\n" +
++                "  allowedAdFlags: 0\n  audienceTagged: 0\n  bannerSize: 0\n  bannerRefresh: 30\n" +
++                "  interstitialInterval: 30\n  loadingMode: 2\n  debugMode: 0\n  trackLocationEnabled: 0\n" +
++                "  interWhenNoRewardedAd: 1\n";
++
++            var dir = Path.GetDirectoryName(assetPath);
++            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
++            File.WriteAllText(assetPath, yaml);
++            AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceSynchronousImport);
++            return AssetDatabase.LoadAssetAtPath<Object>(assetPath);
++        }
++
++        // The CAS settings script guid is shared across platforms — reuse a sibling asset's guid when present.
++        private static string SiblingScriptGuid(string assetPath)
++        {
++            var dir = Path.GetDirectoryName(assetPath);
++            if (string.IsNullOrEmpty(dir)) return null;
++            foreach (var guid in AssetDatabase.FindAssets("t:ScriptableObject", new[] { dir }))
++            {
++                var p = AssetDatabase.GUIDToAssetPath(guid);
++                if (p == assetPath) continue;
++                var name = Path.GetFileNameWithoutExtension(p);
++                if (name != null && name.StartsWith("CASSettings"))
++                {
++                    var assetText = File.Exists(p) ? File.ReadAllText(p) : null;
++                    // Read the m_Script guid out of the asset YAML itself.
++                    if (assetText != null)
++                    {
++                        var marker = "guid: ";
++                        var idx = assetText.IndexOf("m_Script:", System.StringComparison.Ordinal);
++                        if (idx >= 0)
++                        {
++                            var g = assetText.IndexOf(marker, idx, System.StringComparison.Ordinal);
++                            if (g >= 0)
++                            {
++                                g += marker.Length;
++                                var end = assetText.IndexOf(',', g);
++                                if (end > g) return assetText.Substring(g, end - g).Trim();
++                            }
++                        }
++                    }
++                }
++            }
++            return null;
++        }
++    }
++}
+diff --git a/Editor/Wizard/CasSettingsWriter.cs.meta b/Editor/Wizard/CasSettingsWriter.cs.meta
+new file mode 100644
+index 0000000..205f7d1
+--- /dev/null
++++ b/Editor/Wizard/CasSettingsWriter.cs.meta
+@@ -0,0 +1,2 @@
++fileFormatVersion: 2
++guid: f6d8e5a4c1728e9b3a5f0c1d2e4f6a78
+diff --git a/Editor/Wizard/Screens/SetupScreen.cs b/Editor/Wizard/Screens/SetupScreen.cs
+index a9b3806..5f9f826 100644
+--- a/Editor/Wizard/Screens/SetupScreen.cs
++++ b/Editor/Wizard/Screens/SetupScreen.cs
+@@ -131,20 +131,22 @@ namespace PSV.Installer.Wizard
+                 head.Add(logo);
+             }
+             var name = new Label(row.Name);
+             name.AddToClassList("cas-comp__name");
+             head.Add(name);
+             comp.Add(head);
+ 
+             el.Add(comp);
+             el.Add(BuildPlatformColumn(row.Android));
+             el.Add(BuildPlatformColumn(row.IOS));
++            if (row.AdFormats)
++                el.Add(BuildCasControls(row));
+             return el;
+         }
+ 
+         private static VisualElement BuildPlatformColumn(List<SetupModel.Cell> cells)
+         {
+             var col = new VisualElement();
+             col.AddToClassList("cas-setup-col-plat");
+ 
+             if (cells == null || cells.Count == 0)
+             {
+@@ -262,12 +264,54 @@ namespace PSV.Installer.Wizard
+                 case ReqStatus.Configured:
+                     return label + (string.IsNullOrEmpty(r.Value) ? "set ✓" : r.Value);
+                 case ReqStatus.NotConfigured:
+                     return label + (string.IsNullOrEmpty(r.Value) ? "not set" : r.Value + " (not set)");
+                 case ReqStatus.Missing:
+                     return label + (string.IsNullOrEmpty(r.Error) ? "missing" : r.Error);
+                 default:
+                     return label + (string.IsNullOrEmpty(r.Error) ? "—" : r.Error);
+             }
+         }
++
++        // CAS-only: ad-format toggles + audience/network choice, per platform, writing to the settings asset.
++        private static VisualElement BuildCasControls(SetupModel.Row row)
++        {
++            var wrap = new VisualElement();
++            wrap.AddToClassList("cas-cas-controls");
++            wrap.Add(PlatformControls("Android"));
++            wrap.Add(PlatformControls("iOS"));
++            return wrap;
++        }
++
++        private static VisualElement PlatformControls(string platform)
++        {
++            var box = new VisualElement();
++            box.AddToClassList("cas-cas-controls__plat");
++            box.Add(new Label(platform) { });
++
++            var flags = CasSettingsWriter.ReadAdFlags(platform);
++            box.Add(FormatToggle(platform, "Banner", AdFlagsBits.Banner, flags));
++            box.Add(FormatToggle(platform, "Interstitial", AdFlagsBits.Interstitial, flags));
++            box.Add(FormatToggle(platform, "Rewarded", AdFlagsBits.Rewarded, flags));
++            box.Add(FormatToggle(platform, "AppOpen", AdFlagsBits.AppOpen, flags));
++
++            var families = CasAudience.IsFamilies(CasSettingsWriter.ReadAudience(platform));
++            var net = new Toggle("Families (children) ads") { value = families };
++            net.RegisterValueChangedCallback(e =>
++            {
++                CasSettingsWriter.SetAudience(platform, CasAudience.ForFamilies(e.newValue));
++                CasMediation.SelectSolution(
++                    platform == "iOS" ? UnityEditor.BuildTarget.iOS : UnityEditor.BuildTarget.Android, e.newValue);
++            });
++            box.Add(net);
++            return box;
++        }
++
++        private static Toggle FormatToggle(string platform, string label, int flag, int currentMask)
++        {
++            var t = new Toggle(label) { value = AdFlagsBits.HasFlag(currentMask, flag) };
++            t.RegisterValueChangedCallback(e =>
++                CasSettingsWriter.SetAdFlags(platform, AdFlagsBits.WithFlag(CasSettingsWriter.ReadAdFlags(platform), flag, e.newValue)));
++            return t;
++        }
+     }
+ }
+diff --git a/Editor/Wizard/SetupModel.cs b/Editor/Wizard/SetupModel.cs
+index 9098c69..57f157a 100644
+--- a/Editor/Wizard/SetupModel.cs
++++ b/Editor/Wizard/SetupModel.cs
+@@ -13,23 +13,25 @@ namespace PSV.Installer.Wizard
+     {
+         internal sealed class Cell
+         {
+             public ConfigRequirement Req;
+             public ReqResult Result;
+             public string Label;
+         }
+ 
+         internal sealed class Row
+         {
++            public string Id;
+             public string Name;
+             public string Logo;
+             public bool Installed;
++            public bool AdFormats;
+             public readonly List<Cell> Android = new List<Cell>();
+             public readonly List<Cell> IOS = new List<Cell>();
+         }
+ 
+         public static bool TryBuild(out List<Row> rows, out string error)
+         {
+             rows = new List<Row>();
+             error = null;
+ 
+             var load = CatalogLoader.Load();
+@@ -51,34 +53,39 @@ namespace PSV.Installer.Wizard
+                     if (e?.Id != null && e.Config != null) configById[e.Id] = e.Config;
+ 
+             // Install state per default component (so we only check config for installed ones).
+             var installedById = new Dictionary<string, bool>();
+             if (ComponentStatusProvider.TryGetStatuses(out var statuses, out _))
+                 foreach (var s in statuses) installedById[s.Id] = s.Installed;
+ 
+             foreach (var id in ComponentStatusProvider.DefaultIds)
+             {
+                 ComponentStatusProvider.TryGetDefaultDisplay(id, out var name, out var logo);
+-                var row = new Row { Name = name, Logo = logo };
++                var row = new Row { Id = id, Name = name, Logo = logo };
+                 installedById.TryGetValue(id, out row.Installed);
+ 
+                 // Only INSTALLED components have their per-platform config evaluated. Each cell
+                 // carries its own requirement (and thus its own per-platform action target).
+                 if (row.Installed && configById.TryGetValue(id, out var reqs) && reqs != null)
+                 {
+                     foreach (var req in reqs)
+                     {
+                         if (req == null) continue;
+                         var cell = new Cell { Req = req, Result = SetupChecker.Evaluate(req), Label = req.Label };
+                         if (req.Platform == "iOS") row.IOS.Add(cell);
+                         else if (req.Platform == "Android") row.Android.Add(cell);
+                         else { row.Android.Add(cell); row.IOS.Add(cell); }
+                     }
++
++                    // Detect if this component has CAS ad-format configuration
++                    if (reqs != null)
++                        foreach (var req in reqs)
++                            if (req != null && req.AdFormats) { row.AdFormats = true; break; }
+                 }
+ 
+                 rows.Add(row);
+             }
+ 
+             return true;
+         }
+     }
+ }
+diff --git a/Editor/Wizard/Uss/theme.uss b/Editor/Wizard/Uss/theme.uss
+index 8ee7739..99edcd8 100644
+--- a/Editor/Wizard/Uss/theme.uss
++++ b/Editor/Wizard/Uss/theme.uss
+@@ -446,10 +446,14 @@
+     position: absolute;
+     top: 6px;
+     right: 4px;
+     width: 7px;
+     height: 7px;
+     border-radius: 4px;
+     background-color: #E5484D;
+     display: none;
+ }
+ .cas-tab__badge--on { display: flex; }
++
++/* ── CAS ad-format controls (Configuration screen) ──────────────────────────── */
++.cas-cas-controls { flex-direction: row; margin-top: 6px; }
++.cas-cas-controls__plat { flex-grow: 1; margin-right: 10px; }
+diff --git a/package.json b/package.json
+index be81246..f83ad89 100644
+--- a/package.json
++++ b/package.json
+@@ -1,13 +1,13 @@
+ {
+   "name": "com.psvgamestudio.installer",
+-  "version": "0.0.1-preview.29",
++  "version": "0.0.1-preview.30",
+   "displayName": "PSV Game Studio Installer",
+   "description": "One-click Unity installer for the PSV / CAS publishing SDK. Scans the project, migrates legacy installs to UPM, manages registries, and keeps installed packages up to date. Editor-only.",
+   "unity": "2022.3",
+   "license": "SEE LICENSE IN LICENSE.md",
+   "author": {
+     "name": "PSV Game Studio"
+   },
+   "dependencies": {
+     "com.unity.nuget.newtonsoft-json": "3.2.1"
+   },

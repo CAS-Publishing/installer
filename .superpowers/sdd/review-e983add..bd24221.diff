@@ -1,0 +1,148 @@
+# Review package: e983add..bd24221
+
+## Commits
+bd24221 feat(installer): CasIdApplier.SetManagerId + catalog editable flag (#2.1b)
+
+## Files changed
+ Editor/Catalog/Catalog.cs                   |  4 +++
+ Editor/Tests/CasIdApplierWriteTests.cs      | 12 +++++++
+ Editor/Tests/CasIdApplierWriteTests.cs.meta |  2 ++
+ Editor/Wizard/CasIdApplier.cs               | 55 +++++++++++++++++++++++++++++
+ 4 files changed, 73 insertions(+)
+
+## Diff
+diff --git a/Editor/Catalog/Catalog.cs b/Editor/Catalog/Catalog.cs
+index ed6c3b4..29cd792 100644
+--- a/Editor/Catalog/Catalog.cs
++++ b/Editor/Catalog/Catalog.cs
+@@ -214,20 +214,24 @@ namespace PSV.Installer.Catalog
+ 
+         /// <summary>A value that counts as "not configured" (e.g. the CAS placeholder "demo").</summary>
+         [JsonProperty("placeholder")] public string Placeholder;
+ 
+         /// <summary>Optional per-platform validation regex for the wizard input (e.g. CAS bundle/numeric).</summary>
+         [JsonProperty("regex")] public string Regex;
+ 
+         /// <summary>Optional placeholder hint text shown in the empty wizard input.</summary>
+         [JsonProperty("hint")] public string Hint;
+ 
++        /// <summary>When true, the Configuration screen renders this settings field as an editable
++        /// input that writes the value back to the settings asset (e.g. CAS managerId). Default false.</summary>
++        [JsonProperty("editable")] public bool Editable;
++
+         /// <summary>Optional Unity menu path to open the relevant settings window (e.g. CAS).</summary>
+         [JsonProperty("openMenu")] public string OpenMenu;
+     }
+ 
+     /// <summary>
+     /// Describes a legacy package that should be removed from the client project
+     /// without any replacement. The catalog entry lists the old npm ids that may
+     /// still appear in manifest.json; the migrator removes them.
+     /// </summary>
+     public sealed class UninstallRecord
+diff --git a/Editor/Tests/CasIdApplierWriteTests.cs b/Editor/Tests/CasIdApplierWriteTests.cs
+new file mode 100644
+index 0000000..29538c6
+--- /dev/null
++++ b/Editor/Tests/CasIdApplierWriteTests.cs
+@@ -0,0 +1,12 @@
++using NUnit.Framework;
++using PSV.Installer.Wizard;
++
++namespace PSV.Installer.Tests
++{
++    public class CasIdApplierWriteTests
++    {
++        [Test] public void Normalize_trims() => Assert.AreEqual("abc", CasIdApplier.NormalizeManagerId("  abc  "));
++        [Test] public void Normalize_null_is_empty() => Assert.AreEqual("", CasIdApplier.NormalizeManagerId(null));
++        [Test] public void Normalize_keeps_inner() => Assert.AreEqual("1234567890", CasIdApplier.NormalizeManagerId("1234567890"));
++    }
++}
+diff --git a/Editor/Tests/CasIdApplierWriteTests.cs.meta b/Editor/Tests/CasIdApplierWriteTests.cs.meta
+new file mode 100644
+index 0000000..c892296
+--- /dev/null
++++ b/Editor/Tests/CasIdApplierWriteTests.cs.meta
+@@ -0,0 +1,2 @@
++fileFormatVersion: 2
++guid: 7c1d4e90a8b24f4c9d2e6f1a3b5c7d9e
+diff --git a/Editor/Wizard/CasIdApplier.cs b/Editor/Wizard/CasIdApplier.cs
+index b4b552c..c783178 100644
+--- a/Editor/Wizard/CasIdApplier.cs
++++ b/Editor/Wizard/CasIdApplier.cs
+@@ -101,20 +101,75 @@ namespace PSV.Installer.Wizard
+ 
+                 if (string.IsNullOrEmpty(value)) return null;
+ 
+                 var isPlaceholder = !string.IsNullOrEmpty(req.Placeholder) &&
+                                     string.Equals(value, req.Placeholder, System.StringComparison.OrdinalIgnoreCase);
+                 return isPlaceholder ? null : value;
+             }
+             return null;
+         }
+ 
++        /// <summary>Trims the entered managerId; null → empty. Pure/testable.</summary>
++        internal static string NormalizeManagerId(string value) => value?.Trim() ?? string.Empty;
++
++        /// <summary>
++        /// Force-writes <paramref name="value"/> to the CAS managerId for <paramref name="platform"/>,
++        /// overwriting any current value (unlike <see cref="ApplyPending"/>, which only fills
++        /// empty/placeholder). Also persists it to the key store so a later reinstall re-applies it.
++        /// No-op when CAS isn't installed (its settings asset doesn't exist yet).
++        /// </summary>
++        public static void SetManagerId(string platform, string value)
++        {
++            var v = NormalizeManagerId(value);
++
++            var load = CatalogLoader.Load();
++            if (load.Status != CatalogLoadStatus.Ok || load.Catalog?.External == null) return;
++
++            ExternalRecord cas = null;
++            foreach (var e in load.Catalog.External)
++                if (e != null && e.Id == CasId) { cas = e; break; }
++            if (cas?.Config == null) return;
++
++            foreach (var req in cas.Config)
++            {
++                if (req == null || req.Kind != "settingsAssetField" || string.IsNullOrEmpty(req.Field)) continue;
++                if (!string.Equals(req.Platform, platform, System.StringComparison.OrdinalIgnoreCase)) continue;
++
++                var asset = SetupChecker.LocateAsset(req.AssetPath, req.AssetType);
++                if (asset == null) return;
++
++                var so = new SerializedObject(asset);
++                var prop = so.FindProperty(req.Field);
++                if (prop == null) return;
++
++                if (prop.isArray)
++                {
++                    if (prop.arraySize == 0) prop.arraySize = 1;
++                    var first = prop.GetArrayElementAtIndex(0);
++                    if (first.propertyType != SerializedPropertyType.String) return;
++                    first.stringValue = v;
++                }
++                else if (prop.propertyType == SerializedPropertyType.String)
++                {
++                    prop.stringValue = v;
++                }
++                else return;
++
++                so.ApplyModifiedPropertiesWithoutUndo();
++                EditorUtility.SetDirty(asset);
++                AssetDatabase.SaveAssets();
++                break;
++            }
++
++            InstallerKeyStore.Set(CasId, platform, v);
++        }
++
+         // managerIds is a string list — write a single-element list when the slot is empty/placeholder.
+         private static bool WriteIfNeeded(SerializedProperty prop, string stored, string placeholder)
+         {
+             if (prop.isArray)
+             {
+                 var current = prop.arraySize > 0 ? FirstString(prop) : null;
+                 if (!ShouldWrite(current, stored, placeholder)) return false;
+                 if (prop.arraySize == 0) prop.arraySize = 1;
+                 var first = prop.GetArrayElementAtIndex(0);
+                 if (first.propertyType != SerializedPropertyType.String) return false;

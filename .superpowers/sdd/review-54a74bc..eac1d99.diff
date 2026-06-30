@@ -1,0 +1,192 @@
+# Review package: 54a74bc..eac1d99
+
+## Commits
+eac1d99 feat(installer): in-field placeholder hint for the CAS-ID input
+
+## Files changed
+ Editor/Wizard/Screens/WelcomeScreen.cs | 16 ++++++++++++++--
+ Editor/Wizard/Uss/theme.uss            | 10 ++++++++++
+ Editor/Wizard/Uxml/Welcome.uxml        |  5 ++++-
+ 3 files changed, 28 insertions(+), 3 deletions(-)
+
+## Diff
+diff --git a/Editor/Wizard/Screens/WelcomeScreen.cs b/Editor/Wizard/Screens/WelcomeScreen.cs
+index 4aa73d5..85791ca 100644
+--- a/Editor/Wizard/Screens/WelcomeScreen.cs
++++ b/Editor/Wizard/Screens/WelcomeScreen.cs
+@@ -16,35 +16,37 @@ namespace PSV.Installer.Wizard
+         private const string CasId = "com.cleversolutions.ads.unity";
+ 
+         public string Id => "welcome";
+         public VisualElement Root { get; }
+ 
+         private WizardRouter _router;
+         private bool _bound;
+ 
+         private readonly TextField _field;
+         private readonly Button _tabAndroid, _tabIos, _next;
++        private readonly Label _placeholder;
+         private readonly VisualElement _methodUpm, _methodGit, _radioUpm, _radioGit;
+         private InstallMethod _method;
+ 
+         private string _platform;   // the single platform this pass configures
+         private string _regex;      // active platform's validation pattern
+ 
+         public WelcomeScreen()
+         {
+             Root = new VisualElement();
+             WizardAssets.CloneInto("Welcome", Root);
+ 
+             _field      = Root.Q<TextField>("welcome-casid");
+             _tabAndroid = Root.Q<Button>("welcome-tab-android");
+             _tabIos     = Root.Q<Button>("welcome-tab-ios");
+             _next       = Root.Q<Button>("welcome-next");
++            _placeholder = Root.Q<Label>("welcome-casid-ph");
+ 
+             _methodUpm = Root.Q<VisualElement>("method-upm");
+             _methodGit = Root.Q<VisualElement>("method-git");
+             _radioUpm  = Root.Q<VisualElement>("radio-upm");
+             _radioGit  = Root.Q<VisualElement>("radio-git");
+             _method    = InstallMethodState.Get();
+ 
+             // Default to the project's active build target; the user may switch.
+             _platform = PlatformDetect.ActivePlatform();
+ 
+@@ -69,60 +71,70 @@ namespace PSV.Installer.Wizard
+         {
+             _router = router;
+             if (!_bound)
+             {
+                 _bound = true;
+ 
+                 _methodUpm?.RegisterCallback<ClickEvent>(_ => SelectMethod(InstallMethod.Upm));
+                 _methodGit?.RegisterCallback<ClickEvent>(_ => SelectMethod(InstallMethod.Git));
+                 _tabAndroid?.RegisterCallback<ClickEvent>(_ => SelectPlatform("Android"));
+                 _tabIos?.RegisterCallback<ClickEvent>(_ => SelectPlatform("iOS"));
+-                _field?.RegisterValueChangedCallback(_ => RefreshNext());
++                _field?.RegisterValueChangedCallback(_ => { RefreshNext(); UpdatePlaceholder(); });
+                 if (_next != null) _next.clicked += OnNext;
+             }
+ 
+             ShowPlatform(_platform);
+             ShowMethod(_method);
+         }
+ 
+         private void SelectPlatform(string platform)
+         {
+             if (_platform == platform) return;
+             ShowPlatform(platform);
+         }
+ 
+         private void ShowPlatform(string platform)
+         {
+             _platform = platform;
+ 
+             // Resolve this platform's validation pattern + prefill its real existing id (if any).
+-            var (regex, _) = CasIdValidation.For(platform);
++            var (regex, hint) = CasIdValidation.For(platform);
+             _regex = regex;
++            if (_placeholder != null) _placeholder.text = hint;
+             if (_field != null) _field.SetValueWithoutNotify(Seed(platform));
++            UpdatePlaceholder();
+ 
+             SetSegActive(_tabAndroid, platform == "Android");
+             SetSegActive(_tabIos, platform == "iOS");
+             RefreshNext();
+         }
+ 
+         private static void SetSegActive(Button seg, bool active)
+         {
+             if (seg == null) return;
+             if (active) seg.AddToClassList("cas-seg__item--active");
+             else        seg.RemoveFromClassList("cas-seg__item--active");
+         }
+ 
+         private void RefreshNext()
+         {
+             _next?.SetEnabled(CasIdValidation.IsValid(_field?.value, _regex));
+         }
+ 
++        // The placeholder hint shows only while the field is empty.
++        private void UpdatePlaceholder()
++        {
++            if (_placeholder == null) return;
++            _placeholder.style.display =
++                string.IsNullOrEmpty(_field?.value) ? DisplayStyle.Flex : DisplayStyle.None;
++        }
++
+         private void OnNext()
+         {
+             // One platform per pass: persist ONLY the selected platform's id, then apply now in case
+             // CAS is already installed (otherwise it'd land only on the next Components rebuild).
+             InstallerKeyStore.Set(CasId, _platform, _field?.value);
+             CasIdApplier.ApplyPending();
+ 
+             _router.GoTo("integration");
+         }
+ 
+diff --git a/Editor/Wizard/Uss/theme.uss b/Editor/Wizard/Uss/theme.uss
+index bf0b034..49cda36 100644
+--- a/Editor/Wizard/Uss/theme.uss
++++ b/Editor/Wizard/Uss/theme.uss
+@@ -100,20 +100,30 @@
+ }
+ .cas-input .unity-base-text-field__input {
+     background-color: rgba(0,0,0,0);
+     border-width: 0;
+     border-left-width: 0; border-right-width: 0; border-top-width: 0; border-bottom-width: 0;
+     color: #D5D5D5;
+     font-size: 12px;
+     padding-top: 7px; padding-bottom: 7px; padding-left: 9px; padding-right: 9px;
+ }
+ 
++.cas-input-wrap { position: relative; }
++.cas-input__ph {
++    position: absolute;
++    left: 10px;
++    top: 8px;
++    color: rgba(213, 213, 213, 0.35);
++    font-size: 12px;
++    -unity-font-style: italic;
++}
++
+ /* ── Radio / checkbox / glyphs (pure USS) ────────────────────────────────── */
+ .cas-radio {
+     width: 14px; height: 14px;
+     border-radius: 7px;
+     background-color: #2A2A2A;
+     border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px;
+     border-color: #5A5A5A;
+     align-items: center; justify-content: center;
+     flex-shrink: 0;
+ }
+diff --git a/Editor/Wizard/Uxml/Welcome.uxml b/Editor/Wizard/Uxml/Welcome.uxml
+index 801c691..e24ad52 100644
+--- a/Editor/Wizard/Uxml/Welcome.uxml
++++ b/Editor/Wizard/Uxml/Welcome.uxml
+@@ -40,21 +40,24 @@
+ 
+             <ui:VisualElement style="margin-top: 18px;">
+                 <ui:Label text="CAS ID" class="cas-label" style="margin-bottom: 6px;" />
+ 
+                 <!-- Single field; the Android/iOS segments swap which platform's value it edits. -->
+                 <ui:VisualElement name="welcome-platform-seg" class="cas-seg" style="margin-bottom: 8px;">
+                     <ui:Button name="welcome-tab-android" text="Android" class="cas-btn cas-btn--sm cas-seg__item" />
+                     <ui:Button name="welcome-tab-ios" text="iOS" class="cas-btn cas-btn--sm cas-seg__item" />
+                 </ui:VisualElement>
+ 
+-                <ui:TextField name="welcome-casid" class="cas-input" />
++                <ui:VisualElement class="cas-input-wrap">
++                    <ui:TextField name="welcome-casid" class="cas-input" />
++                    <ui:Label name="welcome-casid-ph" picking-mode="Ignore" class="cas-input__ph" />
++                </ui:VisualElement>
+                 <ui:Label name="welcome-casid-hint" text="Enter the CAS ID for at least one platform to continue." class="cas-muted" style="margin-top: 6px;" />
+             </ui:VisualElement>
+ 
+         </ui:VisualElement>
+ 
+         <ui:VisualElement class="cas-footer">
+             <ui:Label name="welcome-version" text="v0.0.0" class="cas-muted" />
+             <ui:Button name="welcome-next" text="Next" class="cas-btn cas-btn--primary" style="min-width: 100px;" />
+         </ui:VisualElement>
+     </ui:VisualElement>

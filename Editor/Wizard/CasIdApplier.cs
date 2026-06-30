@@ -57,7 +57,7 @@ namespace PSV.Installer.Wizard
 
                 if (WriteIfNeeded(prop, stored, req.Placeholder))
                 {
-                    so.ApplyModifiedPropertiesWithoutUndo();
+                    so.ApplyModifiedProperties();
                     EditorUtility.SetDirty(asset);
                     changed = true;
                     Debug.Log($"[PSV Installer] Applied CAS ID for {req.Platform}: {stored}");
@@ -106,6 +106,63 @@ namespace PSV.Installer.Wizard
                 return isPlaceholder ? null : value;
             }
             return null;
+        }
+
+        /// <summary>Trims the entered managerId; null → empty. Pure/testable.</summary>
+        internal static string NormalizeManagerId(string value) => value?.Trim() ?? string.Empty;
+
+        /// <summary>
+        /// Force-writes <paramref name="value"/> to the CAS managerId for <paramref name="platform"/>,
+        /// overwriting any current value (unlike <see cref="ApplyPending"/>, which only fills
+        /// empty/placeholder). Also persists it to the key store so a later reinstall re-applies it.
+        /// No-op when CAS isn't installed (its settings asset doesn't exist yet).
+        /// </summary>
+        public static void SetManagerId(string platform, string value)
+        {
+            var v = NormalizeManagerId(value);
+
+            var load = CatalogLoader.Load();
+            if (load.Status != CatalogLoadStatus.Ok || load.Catalog?.External == null) return;
+
+            ExternalRecord cas = null;
+            foreach (var e in load.Catalog.External)
+                if (e != null && e.Id == CasId) { cas = e; break; }
+            if (cas?.Config == null) return;
+
+            foreach (var req in cas.Config)
+            {
+                if (req == null || req.Kind != "settingsAssetField" || string.IsNullOrEmpty(req.Field)) continue;
+                if (!string.Equals(req.Platform, platform, System.StringComparison.OrdinalIgnoreCase)) continue;
+
+                // On any "can't write the asset" path, break (not return) so the keystore write
+                // below still runs — the entered id is remembered for a later (re)install.
+                var asset = SetupChecker.LocateAsset(req.AssetPath, req.AssetType);
+                if (asset == null) break;
+
+                var so = new SerializedObject(asset);
+                var prop = so.FindProperty(req.Field);
+                if (prop == null) break;
+
+                if (prop.isArray)
+                {
+                    if (prop.arraySize == 0) prop.arraySize = 1;
+                    var first = prop.GetArrayElementAtIndex(0);
+                    if (first.propertyType != SerializedPropertyType.String) break;
+                    first.stringValue = v;
+                }
+                else if (prop.propertyType == SerializedPropertyType.String)
+                {
+                    prop.stringValue = v;
+                }
+                else break;
+
+                so.ApplyModifiedProperties();
+                EditorUtility.SetDirty(asset);
+                AssetDatabase.SaveAssets();
+                break;
+            }
+
+            InstallerKeyStore.Set(CasId, platform, v);
         }
 
         // managerIds is a string list — write a single-element list when the slot is empty/placeholder.

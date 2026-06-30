@@ -47,12 +47,31 @@ namespace PSV.Installer.Catalog
         /// against assumptions that may no longer hold.</summary>
         public const int SupportedSchemaVersion = 1;
 
+        // Session cache: GetAllRegisteredPackages() + the catalog.json read/parse are expensive and
+        // Load() is called many times per wizard open (SetupModel, ComponentStatusProvider, the CAS
+        // writers, validation…). The catalog only changes when the metadata package is installed/
+        // updated, which triggers a domain reload that resets this static — so the cache is safe.
+        // An explicit user Refresh calls InvalidateCache() to force a re-read.
+        private static CatalogLoadResult? _cache;
+
         /// <summary>
         /// Locates the metadata package, reads catalog.json, and classifies the outcome.
-        /// Never throws. NotInstalled → caller may install; Unreadable → caller must surface
-        /// the error and NOT reinstall; Ok → use <see cref="CatalogLoadResult.Catalog"/>.
+        /// Cached for the session (see <see cref="InvalidateCache"/>). Never throws.
+        /// NotInstalled → caller may install; Unreadable → caller must surface the error and NOT
+        /// reinstall; Ok → use <see cref="CatalogLoadResult.Catalog"/>.
         /// </summary>
         public static CatalogLoadResult Load()
+        {
+            if (_cache.HasValue) return _cache.Value;
+            _cache = LoadUncached();
+            return _cache.Value;
+        }
+
+        /// <summary>Drops the cached catalog so the next <see cref="Load"/> re-reads from disk. Call
+        /// after an explicit user Refresh. (Static caches also reset on domain reload after installs.)</summary>
+        public static void InvalidateCache() => _cache = null;
+
+        private static CatalogLoadResult LoadUncached()
         {
             foreach (var pkg in PackageInfo.GetAllRegisteredPackages())
             {

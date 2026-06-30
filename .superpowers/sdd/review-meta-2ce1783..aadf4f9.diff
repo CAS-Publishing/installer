@@ -1,0 +1,85 @@
+=== commits ===
+aadf4f9 chore(metadata): bump CAS pin to stable 4.7.4 (#4.3, #5)
+
+=== stat ===
+ CHANGELOG.md | 6 ++++++
+ catalog.json | 4 ++--
+ package.json | 2 +-
+ 3 files changed, 9 insertions(+), 3 deletions(-)
+
+=== diff -U10 ===
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index cd6ed80..25a9a4d 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,14 +1,20 @@
+ # Changelog
+ 
+ All notable changes to this package will be documented in this file.
+ 
++## [0.0.2-preview.19] - 2026-06-29
++
++- **CAS pin → 4.7.4:** bump CAS `recommendedVersion` and git tag from 4.7.0 to the current stable 4.7.4.
++  Aligns the hub install with CAS's own stable channel (no more pointless in-CAS update nag, #4.3) and
++  picks up CAS's signature fix, clearing the "Missing signature" warning that came from 4.7.0 (#5).
++
+ ## [0.0.2-preview.18] - 2026-06-23
+ 
+ - **Tenjin `legacyAssetFiles` — runtime scripts.** Adds signatures for the SDK's RUNTIME scripts
+   (`BaseTenjin.cs`, `Tenjin.cs`, `AndroidTenjin.cs`, `IosTenjin.cs`, `DebugTenjin.cs`,
+   `Tenjin*Integration.cs`), each matched by name + content signature. Migrating a manual Tenjin
+   install moved to a NON-standard path (e.g. `Assets/Scripts/Core/Tenjin`) now removes its scripts
+   too — previously only editor/build helpers were covered, so the runtime scripts were left behind
+   and collided with the UPM package. Needs installer ≥ 0.0.1-preview.24.
+ 
+ ## [0.0.2-preview.17] - 2026-06-22
+diff --git a/catalog.json b/catalog.json
+index 48ceece..09fb171 100644
+--- a/catalog.json
++++ b/catalog.json
+@@ -36,24 +36,24 @@
+   "external": [
+     {
+       "id": "com.cleversolutions.ads.unity",
+       "displayName": "CAS Mediation",
+       "registry": "openupm",
+       "scopes": ["com.cleversolutions"],
+       "assetMarkers": ["CleverAdsSolutions"],
+       "assetRoots": ["CleverAdsSolutions"],
+       "category": "ad",
+       "minVersion": "4.5.4",
+-      "recommendedVersion": "4.7.0",
++      "recommendedVersion": "4.7.4",
+       "git": {
+         "packages": [
+-          { "id": "com.cleversolutions.ads.unity", "url": "https://github.com/cleveradssolutions/CAS-Unity.git", "tag": "4.7.0" }
++          { "id": "com.cleversolutions.ads.unity", "url": "https://github.com/cleveradssolutions/CAS-Unity.git", "tag": "4.7.4" }
+         ]
+       },
+       "config": [
+         { "platform": "Android", "kind": "settingsAssetField", "assetPath": "Assets/CleverAdsSolutions/Resources/CASSettingsAndroid.asset", "field": "managerIds", "placeholder": "demo", "label": "CAS ID", "openMenu": "Assets/CleverAdsSolutions/Settings" },
+         { "platform": "iOS",     "kind": "settingsAssetField", "assetPath": "Assets/CleverAdsSolutions/Resources/CASSettingsiOS.asset",     "field": "managerIds", "placeholder": "demo", "label": "CAS ID", "openMenu": "Assets/CleverAdsSolutions/Settings" }
+       ]
+     },
+     {
+       "id": "com.tenjin.sdk",
+       "displayName": "Tenjin SDK",
+diff --git a/package.json b/package.json
+index 4dee4fc..e8767cc 100644
+--- a/package.json
++++ b/package.json
+@@ -1,13 +1,13 @@
+ {
+   "name": "com.psvgamestudio.installer.metadata",
+-  "version": "0.0.2-preview.18",
++  "version": "0.0.2-preview.19",
+   "displayName": "PSV Installer Metadata",
+   "description": "Dynamic catalog of PSV / CAS packages managed by com.psvgamestudio.installer. Ships separately from the installer so new packages and migration rules reach clients without an installer release.",
+   "unity": "2022.3",
+   "license": "SEE LICENSE IN LICENSE.md",
+   "author": {
+     "name": "PSV Game Studio"
+   },
+   "publishConfig": {
+     "registry": "https://npm.psvgamestudio.com/"
+   },

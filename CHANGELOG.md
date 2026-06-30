@@ -2,6 +2,71 @@
 
 All notable changes to this package will be documented in this file.
 
+## [0.0.1-preview.34] - 2026-06-29
+
+- **Configuration scoped to the active platform.** The Configuration tab now shows only the active
+  build target's platform (status grid + CAS card), matching the single-platform-per-pass flow.
+- **CAS mediation network sets are independent Optimal / Families checkboxes** (mirroring CAS's own
+  model — both, one, or neither), and switching a set now reflects **live** in an open CAS settings
+  window instead of needing a reopen.
+- **Redesigned CAS configuration card** — ad formats as a 2-up grid and the network sets side by
+  side, so it reads as compact groups instead of one tall single-column list.
+- **Fix: "Switch to UPM" now actually rewrites the git dependency** — it was a silent no-op that left
+  the package on its git URL.
+- **Fix: switching the build target no longer discards a CAS ID being typed on Welcome**, and the
+  missing-Android-build-templates banner now appears only when Android is the active target.
+- **Fix:** previously-silent CAS settings-write failures are now surfaced; a git-installed package no
+  longer shows a misleading "Update" action; and the Migrate "Delete anyway" detection is hardened
+  against message rewording.
+- **Performance:** the Configuration / Components tabs no longer re-scan the project and re-parse the
+  catalog on every visit (session-cached; the **Refresh** button forces a re-read) — removes the
+  tab-switch lag.
+
+## [0.0.1-preview.33] - 2026-06-29
+
+- Automatic integration now enables the custom Android gradle/manifest templates (so a fresh project
+  builds), and the Configuration tab flags + one-click-enables any that are missing (#6).
+
+## [0.0.1-preview.32] - 2026-06-29
+
+- Migrate now offers a Delete-anyway fallback for git-untracked files and auto-removes precisely-named Plugins libs (#4, new #8).
+
+## [0.0.1-preview.31] - 2026-06-29
+
+- Git-installed PSV SDKs now show "Installed (git)" with a Switch to UPM action and a "git" version
+  label, instead of a misleading Fix/"local" (#4.1, #4.2).
+
+## [0.0.1-preview.30] - 2026-06-29
+
+- Configuration: CAS ad-format toggles + audience/network (Optimal/Families) set, with auto settings-asset create (#4.5).
+
+## [0.0.1-preview.29] - 2026-06-29
+
+- Configuration tab: the CAS-ID cell is now inline-editable (writes the managerId directly) (#2.1b).
+
+## [0.0.1-preview.28] - 2026-06-29
+
+- **Auto-open engine (#7 / WS-2):** after first-run, the installer reopens automatically following an
+  installer-driven install (landing on Components) via a one-shot reload signal — and no longer
+  re-pops on unrelated manual UPM changes.
+- **Build-target switch (#7):** switching the active build target to Android or iOS, when CAS is
+  installed but that platform's CAS id is unconfigured, auto-opens the wizard at Welcome with the new
+  platform preselected. Other targets are ignored.
+
+## [0.0.1-preview.27] - 2026-06-29
+
+- **Welcome single-platform pass (#2):** the Welcome screen now configures ONE platform per pass,
+  defaulting to the active build target (switchable). The CAS-ID field is validated per platform
+  (Android = bundle id, iOS = numeric); `Next` is locked until the value is valid, and the CAS test
+  value `demo` is rejected. New `PlatformDetect` and `CasIdValidation` helpers; `CanProceed` removed.
+  Supersedes the unreleased preview.26 (which it includes) — publish preview.27.
+
+## [0.0.1-preview.26] - 2026-06-29
+
+- **Fix (Welcome #2):** the CAS-ID field now starts empty on (re)open; only a real, already-configured
+  CAS managerId prefills it (#2.2). A previously-typed-but-unapplied value no longer repopulates the
+  field. Policy extracted to `WelcomeScreen.ResolveSeed` and unit-tested.
+
 ## [0.0.1-preview.25] - 2026-06-23
 
 - **Docs:** refresh the README install-route version examples (UPM / git-URL / manifest snippets) to the

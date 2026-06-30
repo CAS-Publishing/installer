@@ -47,8 +47,11 @@
                     <ui:Button name="welcome-tab-ios" text="iOS" class="cas-btn cas-btn--sm cas-seg__item" />
                 </ui:VisualElement>
 
-                <ui:TextField name="welcome-casid" class="cas-input" />
-                <ui:Label name="welcome-casid-hint" text="Enter the CAS ID for at least one platform to continue." class="cas-muted" style="margin-top: 6px;" />
+                <ui:VisualElement class="cas-input-wrap">
+                    <ui:TextField name="welcome-casid" class="cas-input" />
+                    <ui:Label name="welcome-casid-ph" picking-mode="Ignore" class="cas-input__ph" />
+                </ui:VisualElement>
+                <ui:Label name="welcome-casid-hint" text="Enter the CAS ID for this platform to continue." class="cas-muted" style="margin-top: 6px;" />
             </ui:VisualElement>
 
         </ui:VisualElement>

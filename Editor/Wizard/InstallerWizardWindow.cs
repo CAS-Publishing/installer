@@ -29,6 +29,11 @@ namespace PSV.Installer.Wizard
         // SessionState survives reloads and resets on editor restart.
         private const string CurrentScreenKey = "PSV.Installer.Wizard.CurrentScreen";
 
+        // Set by OpenAtWelcome so the Welcome screen preselects a specific platform on a build-target
+        // switch even when the window was already open (its WelcomeScreen kept its construction-time
+        // platform). One-shot, consumed in WelcomeScreen.OnEnter.
+        private const string RequestPlatformKey = "PSV.Installer.Wizard.RequestPlatform";
+
         // Screens that appear as top tabs; everything else is a full-screen flow state.
         // Welcome + Integration are first-run-only flow screens — once set up, the user never
         // returns to the install picker, so they are NOT tabs.
@@ -85,6 +90,42 @@ namespace PSV.Installer.Wizard
                 GetWindow<InstallerWizardWindow>()._router?.GoTo("welcome");
         }
 
+        /// <summary>
+        /// Opens the wizard at Welcome with <paramref name="platform"/> preselected (the build-target
+        /// watcher uses this). Does NOT clear <see cref="IntroDone"/> — it is a targeted "configure
+        /// this platform" prompt, not a first-run reset.
+        /// </summary>
+        public static void OpenAtWelcome(string platform)
+        {
+            // Already open ON Welcome: the user is actively configuring a platform — a build-target
+            // switch must not reopen/reseed and discard the id they're mid-typing. Leave them be; they
+            // can switch the platform tab by hand. (HasOpenInstances first, so GetWindow never creates.)
+            if (HasOpenInstances<InstallerWizardWindow>() &&
+                GetWindow<InstallerWizardWindow>()._router?.Current == "welcome")
+                return;
+
+            SessionState.SetString(RequestPlatformKey, platform ?? string.Empty);
+            SessionState.SetString(CurrentScreenKey, "welcome");
+            Open();
+            // A fresh Open() already previewed Welcome (ResolveStartScreen → welcome) and consumed the
+            // request, so only navigate an already-open window that's on a DIFFERENT screen — this
+            // avoids re-entering Welcome (a double OnEnter, two redundant catalog reads) on a new window.
+            if (HasOpenInstances<InstallerWizardWindow>())
+            {
+                var router = GetWindow<InstallerWizardWindow>()._router;
+                if (router != null && router.Current != "welcome")
+                    router.GoTo("welcome");
+            }
+        }
+
+        /// <summary>Returns and clears the platform requested by <see cref="OpenAtWelcome"/> (one-shot).</summary>
+        internal static string ConsumeRequestedPlatform()
+        {
+            var p = SessionState.GetString(RequestPlatformKey, string.Empty);
+            if (!string.IsNullOrEmpty(p)) SessionState.EraseString(RequestPlatformKey);
+            return p;
+        }
+
         /// <summary>Closes the window if open — used by the All Done screen's Close button.</summary>
         public static void CloseActive()
         {
@@ -100,15 +141,22 @@ namespace PSV.Installer.Wizard
         public static void ShowIfReportChanged(ScanReport report)
         {
             if (report == null) return;
-            // Auto-open only on a project's first run. After the user has passed the first screen
-            // (IntroDone), never pop the window automatically — surface updates via the About badge.
-            if (IntroDone) return;
 
-            // First run: always open. Record the hash only AFTER opening — previously it was set
-            // first, so an open interrupted by the install/self-delete domain reload latched the
-            // hash and suppressed every later attempt until an editor restart (the reported
-            // "hub doesn't open / only after restart"). Open() is idempotent: GetWindow focuses an
-            // existing window, so re-running on each reload is harmless.
+            // First run: always open (idempotent; record hash AFTER so an install/self-delete reload
+            // that kills the just-opened window can't latch the hash and suppress later opens).
+            if (!IntroDone)
+            {
+                Open();
+                ScanReportStore.SetLastShownHash(report.Hash);
+                return;
+            }
+
+            // After first-run: auto-open ONLY when the installer drove the change (a manifest mutation
+            // set the one-shot signal). Unrelated/manual UPM changes never re-pop the window — updates
+            // surface via the About badge instead. ResolveStartScreen restores the saved screen
+            // (Components for a normal post-intro reopen).
+            if (!PSV.Installer.Common.InstallReloadSignal.ConsumePending()) return;
+
             Open();
             ScanReportStore.SetLastShownHash(report.Hash);
         }
@@ -157,7 +205,16 @@ namespace PSV.Installer.Wizard
             // Mid-session restore (e.g. after the install-triggered domain reload).
             var saved = SessionState.GetString(CurrentScreenKey, "");
             if (!string.IsNullOrEmpty(saved) && Array.IndexOf(ScreenOrder, saved) >= 0)
+            {
+                // Past the intro, don't RESTORE a first-run-only flow screen (welcome/integration) —
+                // those have no tab bar. Exception: a build-target-switch prompt that explicitly
+                // requested Welcome (RequestPlatform still pending). Otherwise a window closed on
+                // Welcome would reopen tab-less instead of on the Components tab.
+                var welcomeRequested = !string.IsNullOrEmpty(SessionState.GetString(RequestPlatformKey, ""));
+                if (IntroDone && !welcomeRequested && (saved == "welcome" || saved == "integration"))
+                    return "components";
                 return saved;
+            }
 
             // Fresh open: first run shows the intro; afterwards land on the Components tab.
             return IntroDone ? "components" : "welcome";

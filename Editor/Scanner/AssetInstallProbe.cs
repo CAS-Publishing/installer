@@ -247,6 +247,85 @@ namespace PSV.Installer.Scanner
             return hits;
         }
 
+        /// <summary>
+        /// Case-insensitive file-name match supporting at most one '*' wildcard (prefix*suffix).
+        /// Used for precise Plugins-lib targeting (e.g. "libFirebaseCpp*"). Pure/testable.
+        /// </summary>
+        public static bool MatchesFilePattern(string fileName, string pattern)
+        {
+            if (string.IsNullOrEmpty(fileName) || string.IsNullOrEmpty(pattern)) return false;
+            var f = fileName.ToLowerInvariant();
+            var p = pattern.ToLowerInvariant();
+            var star = p.IndexOf('*');
+            if (star < 0) return f == p;
+            var prefix = p.Substring(0, star);
+            var suffix = p.Substring(star + 1);
+            return f.Length >= prefix.Length + suffix.Length
+                && f.StartsWith(prefix, System.StringComparison.Ordinal)
+                && f.EndsWith(suffix, System.StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// Finds files under <paramref name="relativeDir"/> (default "Plugins") whose file name matches
+        /// any of <paramref name="patterns"/> (exact or single-'*' glob). Returns Assets-relative paths.
+        /// Precise by design — patterns must be specific lib names, not broad globs.
+        /// </summary>
+        public static List<string> FindPluginFiles(IReadOnlyList<string> patterns, string relativeDir = "Plugins", int max = 50)
+        {
+            var hits = new List<string>();
+            if (patterns == null || patterns.Count == 0 || string.IsNullOrEmpty(relativeDir)) return hits;
+
+            // Safety: this probe DRIVES deletion, so never act on an over-broad pattern. Keep exact
+            // names and wildcards with a substantial literal prefix; drop the rest (e.g. "*", "*.a",
+            // "lib*") with a warning, so a misconfigured catalog can't mass-delete shared Plugins files.
+            var safe = new List<string>();
+            foreach (var pat in patterns)
+            {
+                if (IsSafePluginPattern(pat)) safe.Add(pat);
+                else Debug.LogWarning("[PSV Installer] Ignoring over-broad pluginFiles pattern '" + pat +
+                                      "' — use an exact file name or a wildcard with a >=5-char prefix.");
+            }
+            if (safe.Count == 0) return hits;
+
+            var assetsRoot = Application.dataPath;
+            var dir = Path.GetFullPath(Path.Combine(assetsRoot, relativeDir));
+            if (!Directory.Exists(dir)) return hits;
+
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(dir, "*.*", SearchOption.AllDirectories))
+                {
+                    if (string.Equals(Path.GetExtension(file), ".meta", System.StringComparison.OrdinalIgnoreCase)) continue;
+                    var name = Path.GetFileName(file);
+                    var matched = false;
+                    foreach (var pat in safe) if (MatchesFilePattern(name, pat)) { matched = true; break; }
+                    if (!matched) continue;
+
+                    var full = Path.GetFullPath(file);
+                    if (full.Length <= assetsRoot.Length) continue;
+                    var rel = full.Substring(assetsRoot.Length).Replace('\\', '/').TrimStart('/');
+                    hits.Add(rel);
+                    if (hits.Count >= max) break;
+                }
+            }
+            catch { /* read-only probe: return what we have */ }
+            return hits;
+        }
+
+        /// <summary>
+        /// A <c>pluginFiles</c> pattern is safe to DRIVE deletion when it's an exact name, or a single
+        /// '*' wildcard whose literal prefix is at least 5 chars — so "*", "*.a", "lib*", or a two-star
+        /// pattern can never mass-match the shared Plugins folder. Pure/testable.
+        /// </summary>
+        internal static bool IsSafePluginPattern(string pattern)
+        {
+            if (string.IsNullOrEmpty(pattern)) return false;
+            var star = pattern.IndexOf('*');
+            if (star < 0) return true;                              // exact name
+            if (pattern.IndexOf('*', star + 1) >= 0) return false;  // more than one '*'
+            return star >= 5;                                       // literal prefix length before '*'
+        }
+
         // ── Shared helpers ───────────────────────────────────────────────────
 
         /// <summary>Case-insensitive substring match of <paramref name="value"/> against any marker.</summary>

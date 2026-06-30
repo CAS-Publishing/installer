@@ -29,6 +29,7 @@ namespace PSV.Installer.Wizard
         public bool   Actionable;    // false when nothing to do (button disabled)
         public bool   Installed;     // true when the package is present (any non-NotInstalled state)
         public bool   OutsideUpm;    // detected via .unitypackage/manual, not UPM → action = Migrate
+        public bool   GitInstalled;  // installed via a git-URL dependency → offer Switch to UPM
     }
 
     /// <summary>
@@ -72,11 +73,47 @@ namespace PSV.Installer.Wizard
             return false;
         }
 
+        // Session cache: a status read runs ProjectScanner.Scan (reflection over loaded assemblies +
+        // disk probes) and is called repeatedly per wizard open (SetupModel, AnyComponentInstalled,
+        // CasPresence, each tab). Project state only changes via installs/migrations, which trigger a
+        // domain reload that resets these statics — so caching is safe. An explicit Refresh calls
+        // InvalidateCache(). The cached list is treated as read-only by all callers.
+        private static List<ComponentStatus> _cachedStatuses;
+        private static string _cachedError;
+        private static bool _cachedOk;
+        private static bool _hasCache;
+
+        /// <summary>Drops the cached scan so the next <see cref="TryGetStatuses"/> re-scans. Call after
+        /// an explicit user Refresh. (Static caches also reset on domain reload after installs.)</summary>
+        public static void InvalidateCache()
+        {
+            _hasCache = false;
+            _cachedStatuses = null;
+            _cachedError = null;
+        }
+
         /// <summary>
-        /// Returns one <see cref="ComponentStatus"/> per default component. On catalog
-        /// failure returns false with a human-readable <paramref name="error"/>.
+        /// Returns one <see cref="ComponentStatus"/> per default component (cached for the session;
+        /// see <see cref="InvalidateCache"/>). On catalog failure returns false with a human-readable
+        /// <paramref name="error"/>. The returned list is shared — treat it as read-only.
         /// </summary>
         public static bool TryGetStatuses(out List<ComponentStatus> statuses, out string error)
+        {
+            if (_hasCache)
+            {
+                statuses = _cachedStatuses;
+                error = _cachedError;
+                return _cachedOk;
+            }
+
+            _cachedOk = BuildStatuses(out _cachedStatuses, out _cachedError);
+            _hasCache = true;
+            statuses = _cachedStatuses;
+            error = _cachedError;
+            return _cachedOk;
+        }
+
+        private static bool BuildStatuses(out List<ComponentStatus> statuses, out string error)
         {
             statuses = new List<ComponentStatus>();
             error = null;
@@ -144,8 +181,14 @@ namespace PSV.Installer.Wizard
                 default:
                     s.Tone = "red";    s.StatusText = "Not Installed";    s.ActionText = "Install";   s.ActionVariant = "primary"; s.Actionable = true;  break;
             }
-            if (PSV.Installer.Scanner.StateClassifier.IsGitSpec(s.Version) && s.StatusText == "Installed")
+            if (PSV.Installer.Scanner.StateClassifier.IsGitSpec(s.Version))
+            {
+                // A deliberate git install is valid however its ref compares to the catalog pin.
+                // Evaluate this regardless of State so an UpmOutdated/UpmBelowMin git package never
+                // shows an "Update"/"Too old" action that would overwrite the git URL with a semver.
                 s.StatusText = "Installed (git)";
+                s.ActionText = "Up to date"; s.ActionVariant = "muted"; s.Actionable = false;
+            }
             return s;
         }
 
@@ -177,7 +220,15 @@ namespace PSV.Installer.Wizard
                     s.Tone = "red";    s.StatusText = "Not Installed";  s.ActionText = "Install";    s.ActionVariant = "primary"; s.Actionable = true;  break;
             }
             if (PSV.Installer.Scanner.StateClassifier.IsGitSpec(s.Version) && s.StatusText == "Installed")
+            {
+                // Git-installed: a valid install, but offer an explicit Switch to UPM rather than a
+                // misleading "Up to date"/Fix. (Switch is optional — a muted, non-warning action.)
                 s.StatusText = "Installed (git)";
+                s.ActionText = "Switch to UPM";
+                s.ActionVariant = "muted";
+                s.Actionable = true;
+                s.GitInstalled = true;
+            }
             return s;
         }
 

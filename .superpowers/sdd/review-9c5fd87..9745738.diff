@@ -1,0 +1,394 @@
+# Review package: 9c5fd87..HEAD
+
+## Commits
+9745738 chore(installer): release notes for Migrate delete-anyway + Plugins cleanup (preview.32)
+ab7ad07 fix(installer): reject over-broad pluginFiles patterns in FindPluginFiles (deletion safety)
+5b09496 feat(installer): precise Plugins-lib auto-delete on migrate (pluginFiles) (new #8)
+5e4eb5f feat(installer): Migrate 'Delete anyway' fallback for git-untracked files (#4)
+6ff01d3 feat(installer): BackupAndDeletePath.IgnoreGitGuard (PathSafety still enforced) (#4)
+
+## Files changed
+ CHANGELOG.md                              |  4 ++
+ Editor/Catalog/Catalog.cs                 |  4 ++
+ Editor/Migrator/MigrationAction.cs        | 10 +++-
+ Editor/Migrator/Migrator.cs               |  4 +-
+ Editor/Scanner/AssetInstallProbe.cs       | 79 +++++++++++++++++++++++++++++++
+ Editor/Tests/PluginFileMatchTests.cs      | 26 ++++++++++
+ Editor/Tests/PluginFileMatchTests.cs.meta | 11 +++++
+ Editor/Wizard/WizardActions.cs            | 43 ++++++++++++++---
+ package.json                              |  2 +-
+ 9 files changed, 174 insertions(+), 9 deletions(-)
+
+## Diff
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index c643125..46a3ded 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,14 +1,18 @@
+ # Changelog
+ 
+ All notable changes to this package will be documented in this file.
+ 
++## [0.0.1-preview.32] - 2026-06-29
++
++- Migrate now offers a Delete-anyway fallback for git-untracked files and auto-removes precisely-named Plugins libs (#4, new #8).
++
+ ## [0.0.1-preview.31] - 2026-06-29
+ 
+ - Git-installed PSV SDKs now show "Installed (git)" with a Switch to UPM action and a "git" version
+   label, instead of a misleading Fix/"local" (#4.1, #4.2).
+ 
+ ## [0.0.1-preview.30] - 2026-06-29
+ 
+ - Configuration: CAS ad-format toggles + audience/network (Optimal/Families) set, with auto settings-asset create (#4.5).
+ 
+ ## [0.0.1-preview.29] - 2026-06-29
+diff --git a/Editor/Catalog/Catalog.cs b/Editor/Catalog/Catalog.cs
+index 651e472..c1c171f 100644
+--- a/Editor/Catalog/Catalog.cs
++++ b/Editor/Catalog/Catalog.cs
+@@ -115,20 +115,24 @@ namespace PSV.Installer.Catalog
+         /// Assets-relative folders WHOLLY OWNED by this SDK that migration deletes when moving it to UPM
+         /// (its install folder + satellites like EDM / PlayServicesResolver / its own
+         /// <c>Editor Default Resources/&lt;sdk&gt;</c> subfolder). Only the ones that actually exist are
+         /// deleted, each through the git/path-safety guard. NEVER list a shared folder
+         /// (<c>Assets/Plugins</c>, <c>Resources</c>, …) — those are surfaced as a manual-cleanup warning.
+         /// This is the ONLY source of migration delete targets — there is no file-walk. Absent → the
+         /// migrator reports "couldn't locate, remove manually" (safe no-op).
+         /// </summary>
+         [JsonProperty("assetRoots")]         public List<string> AssetRoots;
+ 
++        /// <summary>Exact/glob file names (single '*') of this SDK's native libs in Assets/Plugins to
++        /// auto-delete on migrate (e.g. "libFirebaseCppApp.a"). Precise — never broad globs.</summary>
++        [JsonProperty("pluginFiles")] public List<string> PluginFiles;
++
+         /// <summary>
+         /// Individual SDK files the manual (.unitypackage) install SCATTERS outside <see cref="AssetRoots"/>
+         /// into shared folders (e.g. Tenjin's <c>BuildPostProcessor.cs</c> / <c>Dependencies.xml</c> dropped
+         /// into <c>Assets/Editor</c>). Each is matched by file NAME + a CONTENT signature (all
+         /// <see cref="LegacyAssetFile.Contains"/> markers must appear) so a user's unrelated file of the
+         /// same name is never touched. Found anywhere under Assets/ (outside <see cref="AssetRoots"/>) and
+         /// surfaced in the migrate confirm window for the user to approve before deletion. Absent → none.
+         /// </summary>
+         [JsonProperty("legacyAssetFiles")]   public List<LegacyAssetFile> LegacyAssetFiles;
+ 
+diff --git a/Editor/Migrator/MigrationAction.cs b/Editor/Migrator/MigrationAction.cs
+index 990ef0b..dca012f 100644
+--- a/Editor/Migrator/MigrationAction.cs
++++ b/Editor/Migrator/MigrationAction.cs
+@@ -137,16 +137,24 @@ namespace PSV.Installer.Migrator
+     /// The executor (Phase 4b) snapshots the path into the backup archive before deletion.
+     /// </summary>
+     public sealed class BackupAndDeletePath : MigrationAction
+     {
+         /// <summary>
+         /// Path relative to <c>Assets/</c> (e.g. "Plugins/Firebase").
+         /// The executor resolves this against <c>Application.dataPath</c>.
+         /// </summary>
+         public string RelativePath { get; }
+ 
+-        public BackupAndDeletePath(string relativePath)
++        /// <summary>
++        /// When true, the runner deletes even if git can't recover the path (untracked/dirty).
++        /// PathSafety (no escaping Assets/) is still enforced. Set only after an explicit
++        /// "Delete anyway" confirmation — the deletion is permanent.
++        /// </summary>
++        public bool IgnoreGitGuard { get; }
++
++        public BackupAndDeletePath(string relativePath, bool ignoreGitGuard = false)
+         {
+             RelativePath = relativePath;
++            IgnoreGitGuard = ignoreGitGuard;
+         }
+     }
+ }
+diff --git a/Editor/Migrator/Migrator.cs b/Editor/Migrator/Migrator.cs
+index 7cfd77d..3775b58 100644
+--- a/Editor/Migrator/Migrator.cs
++++ b/Editor/Migrator/Migrator.cs
+@@ -80,21 +80,23 @@ namespace PSV.Installer.Migrator
+             // ── 2. Delete legacy asset paths LAST (irreversible) ──
+             var assetsRoot = Application.dataPath;
+             foreach (var action in plan.OfType<BackupAndDeletePath>())
+             {
+                 if (!PathSafety.TryResolveContained(assetsRoot, action.RelativePath, out var absolutePath, out var pathError))
+                 {
+                     failures.Add($"DeletePath({action.RelativePath}): {pathError}");
+                     return new ApplyResult(false, executedCount, failures);
+                 }
+ 
+-                if (!GitGuard.IsTrackedAndClean(absolutePath, out var gitReason))
++                // PathSafety (above) is always enforced. The git recoverability guard can be
++                // explicitly overridden via IgnoreGitGuard (the user's "Delete anyway" choice).
++                if (!action.IgnoreGitGuard && !GitGuard.IsTrackedAndClean(absolutePath, out var gitReason))
+                 {
+                     failures.Add($"DeletePath({action.RelativePath}): refusing to delete — {gitReason}");
+                     return new ApplyResult(false, executedCount, failures);
+                 }
+ 
+                 if (!DeletePath(absolutePath, out var deleteError))
+                 {
+                     failures.Add($"DeletePath({action.RelativePath}): {deleteError}");
+                     return new ApplyResult(false, executedCount, failures);
+                 }
+diff --git a/Editor/Scanner/AssetInstallProbe.cs b/Editor/Scanner/AssetInstallProbe.cs
+index 1389a03..d41fa38 100644
+--- a/Editor/Scanner/AssetInstallProbe.cs
++++ b/Editor/Scanner/AssetInstallProbe.cs
+@@ -240,20 +240,99 @@ namespace PSV.Installer.Scanner
+                         hits.Add(fullFwd.Substring(assetsRoot.Length).TrimStart('/'));
+                         break;
+                     }
+                     if (hits.Count >= max) break;
+                 }
+             }
+             catch { /* read-only probe: return what we found */ }
+             return hits;
+         }
+ 
++        /// <summary>
++        /// Case-insensitive file-name match supporting at most one '*' wildcard (prefix*suffix).
++        /// Used for precise Plugins-lib targeting (e.g. "libFirebaseCpp*"). Pure/testable.
++        /// </summary>
++        public static bool MatchesFilePattern(string fileName, string pattern)
++        {
++            if (string.IsNullOrEmpty(fileName) || string.IsNullOrEmpty(pattern)) return false;
++            var f = fileName.ToLowerInvariant();
++            var p = pattern.ToLowerInvariant();
++            var star = p.IndexOf('*');
++            if (star < 0) return f == p;
++            var prefix = p.Substring(0, star);
++            var suffix = p.Substring(star + 1);
++            return f.Length >= prefix.Length + suffix.Length
++                && f.StartsWith(prefix, System.StringComparison.Ordinal)
++                && f.EndsWith(suffix, System.StringComparison.Ordinal);
++        }
++
++        /// <summary>
++        /// Finds files under <paramref name="relativeDir"/> (default "Plugins") whose file name matches
++        /// any of <paramref name="patterns"/> (exact or single-'*' glob). Returns Assets-relative paths.
++        /// Precise by design — patterns must be specific lib names, not broad globs.
++        /// </summary>
++        public static List<string> FindPluginFiles(IReadOnlyList<string> patterns, string relativeDir = "Plugins", int max = 50)
++        {
++            var hits = new List<string>();
++            if (patterns == null || patterns.Count == 0 || string.IsNullOrEmpty(relativeDir)) return hits;
++
++            // Safety: this probe DRIVES deletion, so never act on an over-broad pattern. Keep exact
++            // names and wildcards with a substantial literal prefix; drop the rest (e.g. "*", "*.a",
++            // "lib*") with a warning, so a misconfigured catalog can't mass-delete shared Plugins files.
++            var safe = new List<string>();
++            foreach (var pat in patterns)
++            {
++                if (IsSafePluginPattern(pat)) safe.Add(pat);
++                else Debug.LogWarning("[PSV Installer] Ignoring over-broad pluginFiles pattern '" + pat +
++                                      "' — use an exact file name or a wildcard with a >=5-char prefix.");
++            }
++            if (safe.Count == 0) return hits;
++
++            var assetsRoot = Application.dataPath;
++            var dir = Path.GetFullPath(Path.Combine(assetsRoot, relativeDir));
++            if (!Directory.Exists(dir)) return hits;
++
++            try
++            {
++                foreach (var file in Directory.EnumerateFiles(dir, "*.*", SearchOption.AllDirectories))
++                {
++                    if (string.Equals(Path.GetExtension(file), ".meta", System.StringComparison.OrdinalIgnoreCase)) continue;
++                    var name = Path.GetFileName(file);
++                    var matched = false;
++                    foreach (var pat in safe) if (MatchesFilePattern(name, pat)) { matched = true; break; }
++                    if (!matched) continue;
++
++                    var full = Path.GetFullPath(file);
++                    if (full.Length <= assetsRoot.Length) continue;
++                    var rel = full.Substring(assetsRoot.Length).Replace('\\', '/').TrimStart('/');
++                    hits.Add(rel);
++                    if (hits.Count >= max) break;
++                }
++            }
++            catch { /* read-only probe: return what we have */ }
++            return hits;
++        }
++
++        /// <summary>
++        /// A <c>pluginFiles</c> pattern is safe to DRIVE deletion when it's an exact name, or a single
++        /// '*' wildcard whose literal prefix is at least 5 chars — so "*", "*.a", "lib*", or a two-star
++        /// pattern can never mass-match the shared Plugins folder. Pure/testable.
++        /// </summary>
++        internal static bool IsSafePluginPattern(string pattern)
++        {
++            if (string.IsNullOrEmpty(pattern)) return false;
++            var star = pattern.IndexOf('*');
++            if (star < 0) return true;                              // exact name
++            if (pattern.IndexOf('*', star + 1) >= 0) return false;  // more than one '*'
++            return star >= 5;                                       // literal prefix length before '*'
++        }
++
+         // ── Shared helpers ───────────────────────────────────────────────────
+ 
+         /// <summary>Case-insensitive substring match of <paramref name="value"/> against any marker.</summary>
+         internal static bool MatchesAny(string value, IReadOnlyList<string> markers)
+         {
+             if (string.IsNullOrEmpty(value) || markers == null) return false;
+             foreach (var m in markers)
+             {
+                 if (string.IsNullOrEmpty(m)) continue;
+                 if (value.IndexOf(m, StringComparison.OrdinalIgnoreCase) >= 0)
+diff --git a/Editor/Tests/PluginFileMatchTests.cs b/Editor/Tests/PluginFileMatchTests.cs
+new file mode 100644
+index 0000000..b033ffc
+--- /dev/null
++++ b/Editor/Tests/PluginFileMatchTests.cs
+@@ -0,0 +1,26 @@
++using NUnit.Framework;
++using PSV.Installer.Scanner;
++
++namespace PSV.Installer.Tests
++{
++    public class PluginFileMatchTests
++    {
++        [Test] public void Exact_match() => Assert.IsTrue(AssetInstallProbe.MatchesFilePattern("libFirebaseCppApp.a", "libFirebaseCppApp.a"));
++        [Test] public void Exact_mismatch() => Assert.IsFalse(AssetInstallProbe.MatchesFilePattern("libOther.a", "libFirebaseCppApp.a"));
++        [Test] public void Prefix_wildcard() => Assert.IsTrue(AssetInstallProbe.MatchesFilePattern("libFirebaseCppAnalytics.a", "libFirebaseCpp*"));
++        [Test] public void Suffix_wildcard() => Assert.IsTrue(AssetInstallProbe.MatchesFilePattern("libFirebaseCppApp.a", "*.a"));
++        [Test] public void Mid_wildcard() => Assert.IsTrue(AssetInstallProbe.MatchesFilePattern("libFirebaseCppApp.a", "libFirebase*App.a"));
++        [Test] public void Wildcard_no_false_positive() => Assert.IsFalse(AssetInstallProbe.MatchesFilePattern("libUnrelated.a", "libFirebaseCpp*"));
++        [Test] public void Case_insensitive() => Assert.IsTrue(AssetInstallProbe.MatchesFilePattern("LIBFIREBASECPPAPP.A", "libFirebaseCppApp.a"));
++        [Test] public void Null_safe() => Assert.IsFalse(AssetInstallProbe.MatchesFilePattern(null, "x"));
++
++        // IsSafePluginPattern — the deletion-safety gate that rejects over-broad patterns.
++        [Test] public void Safe_exact_name() => Assert.IsTrue(AssetInstallProbe.IsSafePluginPattern("libFirebaseCppApp.a"));
++        [Test] public void Safe_long_prefix_wildcard() => Assert.IsTrue(AssetInstallProbe.IsSafePluginPattern("libFirebaseCpp*"));
++        [Test] public void Unsafe_bare_star() => Assert.IsFalse(AssetInstallProbe.IsSafePluginPattern("*"));
++        [Test] public void Unsafe_extension_glob() => Assert.IsFalse(AssetInstallProbe.IsSafePluginPattern("*.a"));
++        [Test] public void Unsafe_short_prefix() => Assert.IsFalse(AssetInstallProbe.IsSafePluginPattern("lib*"));
++        [Test] public void Unsafe_two_stars() => Assert.IsFalse(AssetInstallProbe.IsSafePluginPattern("libFirebase*App*"));
++        [Test] public void Unsafe_null() => Assert.IsFalse(AssetInstallProbe.IsSafePluginPattern(null));
++    }
++}
+diff --git a/Editor/Tests/PluginFileMatchTests.cs.meta b/Editor/Tests/PluginFileMatchTests.cs.meta
+new file mode 100644
+index 0000000..c04491e
+--- /dev/null
++++ b/Editor/Tests/PluginFileMatchTests.cs.meta
+@@ -0,0 +1,11 @@
++fileFormatVersion: 2
++guid: c2d3e4f5a6b70819203a4b5c6d7e8f01
++MonoImporter:
++  externalObjects: {}
++  serializedVersion: 2
++  defaultReferences: []
++  executionOrder: 0
++  icon: {instanceID: 0}
++  userData:
++  assetBundleName:
++  assetBundleVariant:
+diff --git a/Editor/Wizard/WizardActions.cs b/Editor/Wizard/WizardActions.cs
+index 4720774..477bc69 100644
+--- a/Editor/Wizard/WizardActions.cs
++++ b/Editor/Wizard/WizardActions.cs
+@@ -228,20 +228,26 @@ namespace PSV.Installer.Wizard
+             var deletePaths = AssetProbe.FindExisting(rec.AssetRoots);
+ 
+             // The manual (.unitypackage) install also SCATTERS individual SDK files outside the owned
+             // roots — e.g. Tenjin's BuildPostProcessor.cs / Dependencies.xml dropped into Assets/Editor.
+             // Find them by file name + content signature (so a user's same-named file is never touched)
+             // and fold them into the delete set, so they're shown in the confirm window and removed too
+             // (a leftover BuildPostProcessor re-adds a stale [PostProcessBuild] and breaks the iOS build).
+             foreach (var f in AssetInstallProbe.FindSignatureFiles(rec.LegacyAssetFiles, rec.AssetRoots))
+                 if (!deletePaths.Contains(f)) deletePaths.Add(f);
+ 
++            // Precise native libs in the shared Assets/Plugins folder (e.g. libFirebaseCpp*.a) — matched
++            // by exact name/glob from the catalog, so they're deleted with the rest (not left for the
++            // user to prune by hand). Imprecise marker-only leftovers remain in sharedLeftovers below.
++            foreach (var f in AssetInstallProbe.FindPluginFiles(rec.PluginFiles))
++                if (!deletePaths.Contains(f)) deletePaths.Add(f);
++
+             if (deletePaths.Count == 0)
+             {
+                 EditorUtility.DisplayDialog("PSV Installer",
+                     $"{displayName} appears to be installed manually, but its known folders weren't " +
+                     "found under Assets/ (non-standard layout). Remove the manual copy yourself, then " +
+                     "use Install to add the UPM version.", "OK");
+                 return false;
+             }
+ 
+             // Shared folder (Assets/Plugins) may hold this SDK's native libs ALONGSIDE other SDKs' —
+@@ -258,26 +264,51 @@ namespace PSV.Installer.Wizard
+                 return false;
+ 
+             // STEP 1 — delete the manual copy FIRST. If git can't recover it (untracked/dirty), this
+             // fails before any manifest change, so we never end up with both copies (a duplicate).
+             var deletePlan = new List<MigrationAction>();
+             foreach (var r in deletePaths) deletePlan.Add(new BackupAndDeletePath(r));
+ 
+             var del = new MigrationRunner().Apply(deletePlan);
+             if (!del.Success)
+             {
+-                EditorUtility.DisplayDialog("PSV Installer",
+-                    $"Couldn't remove the manual copy of {displayName}:\n• " +
+-                    string.Join("\n• ", del.Failures) +
+-                    "\n\nCommit those files to git first (so they're recoverable), or delete them " +
+-                    "manually, then migrate again. manifest.json was NOT changed.", "OK");
+-                return true; // re-scan: state is unchanged but the user acted
++                // Offer a permanent "Delete anyway" ONLY when the block was git's recoverability
++                // guard (untracked/dirty). Other failures (PathSafety, IO) are not overridable here.
++                var gitBlocked = del.Failures.Count > 0 &&
++                                 del.Failures.TrueForAll(f => f.Contains("refusing to delete"));
++
++                if (!gitBlocked || !EditorUtility.DisplayDialog("PSV Installer",
++                        $"Some files of {displayName} aren't tracked by git, so they can't be recovered " +
++                        "if removed:\n• " + string.Join("\n• ", del.Failures) +
++                        "\n\nDelete them PERMANENTLY anyway? This cannot be undone.",
++                        "Delete anyway", "Cancel"))
++                {
++                    EditorUtility.DisplayDialog("PSV Installer",
++                        $"Couldn't remove the manual copy of {displayName}:\n• " +
++                        string.Join("\n• ", del.Failures) +
++                        "\n\nCommit those files to git first (so they're recoverable), or delete them " +
++                        "manually, then migrate again. manifest.json was NOT changed.", "OK");
++                    return true; // re-scan: state unchanged but the user acted
++                }
++
++                // User opted in: retry the same deletes with the git guard overridden (PathSafety still on).
++                var forcePlan = new List<MigrationAction>();
++                foreach (var r in deletePaths) forcePlan.Add(new BackupAndDeletePath(r, ignoreGitGuard: true));
++                var forced = new MigrationRunner().Apply(forcePlan);
++                if (!forced.Success)
++                {
++                    EditorUtility.DisplayDialog("PSV Installer",
++                        $"Delete-anyway still failed for {displayName}:\n• " +
++                        string.Join("\n• ", forced.Failures) +
++                        "\n\nmanifest.json was NOT changed.", "OK");
++                    return true;
++                }
+             }
+ 
+             // STEP 2 — UPM install (registry scope + every resolved module). Safe now the copy is gone.
+             var addPlan = new List<MigrationAction>();
+             if (rec.Scopes != null)
+             {
+                 var url = ResolveRegistryUrl(catalog, rec);
+                 foreach (var scope in rec.Scopes)
+                     if (!string.IsNullOrEmpty(scope))
+                         addPlan.Add(new AddScopedRegistry(rec.Registry ?? string.Empty, url, scope));
+diff --git a/package.json b/package.json
+index 3d2a9e9..0657122 100644
+--- a/package.json
++++ b/package.json
+@@ -1,13 +1,13 @@
+ {
+   "name": "com.psvgamestudio.installer",
+-  "version": "0.0.1-preview.31",
++  "version": "0.0.1-preview.32",
+   "displayName": "PSV Game Studio Installer",
+   "description": "One-click Unity installer for the PSV / CAS publishing SDK. Scans the project, migrates legacy installs to UPM, manages registries, and keeps installed packages up to date. Editor-only.",
+   "unity": "2022.3",
+   "license": "SEE LICENSE IN LICENSE.md",
+   "author": {
+     "name": "PSV Game Studio"
+   },
+   "dependencies": {
+     "com.unity.nuget.newtonsoft-json": "3.2.1"
+   },

@@ -6,29 +6,23 @@ namespace PSV.Installer.Tests
     public class WelcomeScreenTests
     {
         [Test]
-        public void CanProceed_false_when_both_empty()
+        public void ResolveSeed_ignores_stored_value()
         {
-            Assert.IsFalse(WelcomeScreen.CanProceed(null, null));
-            Assert.IsFalse(WelcomeScreen.CanProceed("", ""));
-            Assert.IsFalse(WelcomeScreen.CanProceed("   ", "  ")); // whitespace-only doesn't count
+            // A previously-typed-but-unapplied id must NOT repopulate the field (feedback #2).
+            Assert.AreEqual("", WelcomeScreen.ResolveSeed("previously-typed", null));
         }
 
         [Test]
-        public void CanProceed_true_when_android_only()
+        public void ResolveSeed_uses_existing_cas_id()
         {
-            Assert.IsTrue(WelcomeScreen.CanProceed("com.app.android", ""));
+            // A real, already-configured CAS managerId IS prefilled (feedback #2.2).
+            Assert.AreEqual("real-cas-id", WelcomeScreen.ResolveSeed("anything", "real-cas-id"));
         }
 
         [Test]
-        public void CanProceed_true_when_ios_only()
+        public void ResolveSeed_empty_when_no_existing()
         {
-            Assert.IsTrue(WelcomeScreen.CanProceed(null, "com.app.ios"));
-        }
-
-        [Test]
-        public void CanProceed_true_when_both()
-        {
-            Assert.IsTrue(WelcomeScreen.CanProceed("a", "b"));
+            Assert.AreEqual("", WelcomeScreen.ResolveSeed(null, null));
         }
     }
 }

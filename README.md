@@ -49,7 +49,7 @@ automatically — you never edit `manifest.json` for the SDK components themselv
    com.psvgamestudio.installer
    ```
 
-   Leave the version field empty to get the latest (or type a version, e.g. `0.0.1-preview.25`).
+   Leave the version field empty to get the latest (or type a version, e.g. `0.0.1-preview.34`).
 
 #### A2 — Edit `manifest.json`
 
@@ -65,7 +65,7 @@ Add the registry and the dependency to `Packages/manifest.json` directly:
     }
   ],
   "dependencies": {
-    "com.psvgamestudio.installer": "0.0.1-preview.25"
+    "com.psvgamestudio.installer": "0.0.1-preview.34"
   }
 }
 ```
@@ -89,7 +89,7 @@ Omit the suffix to track the mirror's default branch (the latest release), or pi
 release with `#<version>`:
 
 ```
-https://github.com/CAS-Publishing/installer.git#0.0.1-preview.25
+https://github.com/CAS-Publishing/installer.git#0.0.1-preview.34
 ```
 
 #### B2 — Edit `manifest.json`
@@ -99,7 +99,7 @@ Add a git dependency (no `scopedRegistries` entry required):
 ```jsonc
 {
   "dependencies": {
-    "com.psvgamestudio.installer": "https://github.com/CAS-Publishing/installer.git#0.0.1-preview.25"
+    "com.psvgamestudio.installer": "https://github.com/CAS-Publishing/installer.git#0.0.1-preview.34"
   }
 }
 ```
@@ -133,9 +133,9 @@ The window is a tabbed wizard:
 
 | Tab | What it does |
 |---|---|
-| **Welcome** | Choose **Express** (install the recommended PSV/CAS stack in one go) or **Manual** (pick components yourself). Enter your **CAS App IDs** (Android / iOS) — they're prefilled from the project's bundle identifier and written into the CAS settings automatically once CAS is installed. |
-| **Components** | The live catalog of PSV / CAS packages with per-row state (installed / update available / missing). Install, update, or refresh from here. |
-| **Configuration** | Per-platform readiness for the components you've installed, with inline actions to fix anything that isn't set up. |
+| **Welcome** | First-run setup. Pick your **install method** (UPM scoped registry or Git URL) and enter the **CAS App ID** for the platform you're configuring — it defaults to the active build target (Android / iOS) and is switchable. The value is validated per platform (Android = bundle id, iOS = numeric) and written into the CAS settings once CAS is installed. |
+| **Components** | The live catalog of PSV / CAS packages with per-row state (installed / update available / needs migration / installed via git). Install, update, migrate a legacy/manual copy to UPM, switch a git install to the registry, or refresh. |
+| **Configuration** | Per-platform readiness for the components you've installed, **scoped to the active build target**. Each cell opens that platform's settings. For CAS it also offers the **ad formats** (Banner / Interstitial / Rewarded / App Open), the **audience**, and the **Optimal / Families** mediation network sets — all written straight into the CAS settings asset. |
 | **About** | Shows the installed installer version, checks the registry for a newer one, and **self-updates** in place. A red dot on the **About** tab means an update is available (checked once per session). |
 
 ### Updating the installer

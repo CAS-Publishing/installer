@@ -39,6 +39,10 @@ namespace PSV.Installer.Wizard
         // newer catalog), then re-scan the local project state and re-render.
         private void OnRefresh()
         {
+            // Explicit re-read: drop the session caches so the scan + catalog are re-evaluated from
+            // disk (and EnsureMetadata may pull a newer catalog).
+            PSV.Installer.Catalog.CatalogLoader.InvalidateCache();
+            ComponentStatusProvider.InvalidateCache();
             PSV.Installer.Bootstrap.EnsureMetadata();
             Rebuild();
         }
@@ -122,9 +126,11 @@ namespace PSV.Installer.Wizard
             {
                 // Out-of-UPM components migrate (delete the manual copy, then UPM-install);
                 // everything else is a normal Install/Update/Fix via the migrator.
-                var changed = c.OutsideUpm
-                    ? WizardActions.MigrateExternal(c.Id, c.DisplayName)
-                    : WizardActions.Apply(c.Id, c.DisplayName);
+                var changed = c.GitInstalled
+                    ? WizardActions.SwitchToUpm(c.Id, c.DisplayName)
+                    : c.OutsideUpm
+                        ? WizardActions.MigrateExternal(c.Id, c.DisplayName)
+                        : WizardActions.Apply(c.Id, c.DisplayName);
                 if (changed) Rebuild();
             })
             { text = c.ActionText };
@@ -164,12 +170,13 @@ namespace PSV.Installer.Wizard
             return row;
         }
 
-        // Embedded/git dependencies have a long, non-semver spec (e.g. "file:...") — show
-        // a short "local" label instead so the status cell stays readable.
-        private static string FriendlyVersion(string v)
+        // Non-semver specs get a short source label so the status cell stays readable:
+        // a git dependency reads "git" (matches the "Installed (git)" status); file:/embedded → "local".
+        internal static string FriendlyVersion(string v)
         {
             if (string.IsNullOrEmpty(v)) return null;
-            if (v.StartsWith("file:") || v.StartsWith("git") || v.Contains("://")) return "local";
+            if (PSV.Installer.Scanner.StateClassifier.IsGitSpec(v)) return "git";
+            if (v.StartsWith("file:") || v.Contains("://")) return "local";
             return v;
         }
 

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using PSV.Installer.Catalog;
 using PSV.Installer.Common;
@@ -70,6 +71,73 @@ namespace PSV.Installer.Wizard
             }
 
             return true; // re-scan regardless: reflect the real resulting state
+        }
+
+        /// <summary>
+        /// Switches a git-URL-installed external to the scoped-registry package: adds the registry
+        /// scope(s) and AddPackage(id, recommendedVersion), which overwrites the git dependency in
+        /// manifest.json. The normal planner treats a git install as already-current, so this is a
+        /// dedicated path. Behind a confirm dialog.
+        /// </summary>
+        public static bool SwitchToUpm(string componentId, string displayName)
+        {
+            var load = CatalogLoader.Load();
+            if (load.Status != CatalogLoadStatus.Ok)
+            {
+                EditorUtility.DisplayDialog("PSV Installer",
+                    "Catalog is unavailable — cannot switch. " +
+                    (load.Error ?? "Make sure the metadata package is installed."), "OK");
+                return false;
+            }
+
+            var catalog = load.Catalog;
+            ExternalRecord rec = null;
+            if (catalog.External != null)
+                foreach (var e in catalog.External)
+                    if (e != null && e.Id == componentId) { rec = e; break; }
+            if (rec == null)
+            {
+                EditorUtility.DisplayDialog("PSV Installer",
+                    $"{displayName} is not an external record in the catalog — cannot switch.", "OK");
+                return false;
+            }
+
+            var version = !string.IsNullOrEmpty(rec.RecommendedVersion) ? rec.RecommendedVersion : rec.MinVersion;
+            if (string.IsNullOrEmpty(version))
+            {
+                EditorUtility.DisplayDialog("PSV Installer",
+                    $"No version configured for {displayName} in the catalog — cannot switch.", "OK");
+                return false;
+            }
+
+            var plan = new List<MigrationAction>();
+            if (rec.Scopes != null)
+            {
+                var url = ResolveRegistryUrl(catalog, rec);
+                foreach (var scope in rec.Scopes)
+                    if (!string.IsNullOrEmpty(scope))
+                        plan.Add(new AddScopedRegistry(rec.Registry ?? string.Empty, url, scope));
+            }
+            // The git-installed package ALREADY has a dependencies entry (a git URL), so AddPackage
+            // would be an idempotent no-op (it never overwrites an existing entry) — the git URL would
+            // survive and the switch silently do nothing. UpdatePackageVersion overwrites the existing
+            // value (git URL → registry version), which is what actually performs the switch.
+            plan.Add(new UpdatePackageVersion(rec.Id, version));
+
+            if (!EditorUtility.DisplayDialog("PSV Installer",
+                    $"Switch {displayName} from a git URL to the registry version {version}?\n\n" +
+                    "This replaces the git dependency in manifest.json with the scoped-registry package.",
+                    "Switch", "Cancel"))
+                return false;
+
+            var result = new MigrationRunner().Apply(plan);
+            if (result.Success)
+                Debug.Log($"[PSV Installer Wizard] Switched {displayName} to UPM ({rec.Id}@{version}). " +
+                          "Unity will resolve packages now.");
+            else
+                EditorUtility.DisplayDialog("PSV Installer",
+                    $"Switch failed for {displayName}:\n• " + string.Join("\n• ", result.Failures), "OK");
+            return true;
         }
 
         /// <summary>
@@ -172,6 +240,12 @@ namespace PSV.Installer.Wizard
             foreach (var f in AssetInstallProbe.FindSignatureFiles(rec.LegacyAssetFiles, rec.AssetRoots))
                 if (!deletePaths.Contains(f)) deletePaths.Add(f);
 
+            // Precise native libs in the shared Assets/Plugins folder (e.g. libFirebaseCpp*.a) — matched
+            // by exact name/glob from the catalog, so they're deleted with the rest (not left for the
+            // user to prune by hand). Imprecise marker-only leftovers remain in sharedLeftovers below.
+            foreach (var f in AssetInstallProbe.FindPluginFiles(rec.PluginFiles))
+                if (!deletePaths.Contains(f)) deletePaths.Add(f);
+
             if (deletePaths.Count == 0)
             {
                 EditorUtility.DisplayDialog("PSV Installer",
@@ -202,12 +276,37 @@ namespace PSV.Installer.Wizard
             var del = new MigrationRunner().Apply(deletePlan);
             if (!del.Success)
             {
-                EditorUtility.DisplayDialog("PSV Installer",
-                    $"Couldn't remove the manual copy of {displayName}:\n• " +
-                    string.Join("\n• ", del.Failures) +
-                    "\n\nCommit those files to git first (so they're recoverable), or delete them " +
-                    "manually, then migrate again. manifest.json was NOT changed.", "OK");
-                return true; // re-scan: state is unchanged but the user acted
+                // Offer a permanent "Delete anyway" ONLY when the block was git's recoverability
+                // guard (untracked/dirty). Other failures (PathSafety, IO) are not overridable here.
+                var gitBlocked = del.Failures.Count > 0 &&
+                                 del.Failures.All(f => f.Contains(MigrationRunner.GitRefusalMarker));
+
+                if (!gitBlocked || !EditorUtility.DisplayDialog("PSV Installer",
+                        $"Some files of {displayName} aren't tracked by git, so they can't be recovered " +
+                        "if removed:\n• " + string.Join("\n• ", del.Failures) +
+                        "\n\nDelete them PERMANENTLY anyway? This cannot be undone.",
+                        "Delete anyway", "Cancel"))
+                {
+                    EditorUtility.DisplayDialog("PSV Installer",
+                        $"Couldn't remove the manual copy of {displayName}:\n• " +
+                        string.Join("\n• ", del.Failures) +
+                        "\n\nCommit those files to git first (so they're recoverable), or delete them " +
+                        "manually, then migrate again. manifest.json was NOT changed.", "OK");
+                    return true; // re-scan: state unchanged but the user acted
+                }
+
+                // User opted in: retry the same deletes with the git guard overridden (PathSafety still on).
+                var forcePlan = new List<MigrationAction>();
+                foreach (var r in deletePaths) forcePlan.Add(new BackupAndDeletePath(r, ignoreGitGuard: true));
+                var forced = new MigrationRunner().Apply(forcePlan);
+                if (!forced.Success)
+                {
+                    EditorUtility.DisplayDialog("PSV Installer",
+                        $"Delete-anyway still failed for {displayName}:\n• " +
+                        string.Join("\n• ", forced.Failures) +
+                        "\n\nmanifest.json was NOT changed.", "OK");
+                    return true;
+                }
             }
 
             // STEP 2 — UPM install (registry scope + every resolved module). Safe now the copy is gone.

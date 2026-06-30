@@ -107,6 +107,16 @@
     padding-top: 7px; padding-bottom: 7px; padding-left: 9px; padding-right: 9px;
 }
 
+.cas-input-wrap { position: relative; }
+.cas-input__ph {
+    position: absolute;
+    left: 10px;
+    top: 8px;
+    color: rgba(213, 213, 213, 0.35);
+    font-size: 12px;
+    -unity-font-style: italic;
+}
+
 /* ── Radio / checkbox / glyphs (pure USS) ────────────────────────────────── */
 .cas-radio {
     width: 14px; height: 14px;
@@ -255,19 +265,20 @@
     border-top-color: #1F1F1F; border-bottom-color: #1F1F1F;
 }
 .cas-setup-row {
-    flex-direction: row;
-    align-items: flex-start;
+    flex-direction: column;
     padding: 8px 10px;
     background-color: #343434;
     border-bottom-width: 1px;
     border-bottom-color: #2A2A2A;
 }
 .cas-setup-row--alt { background-color: #303030; }
+.cas-setup-row__grid { flex-direction: row; align-items: flex-start; }
 .cas-setup-col-comp { flex-grow: 1.3; flex-basis: 0; flex-shrink: 1; flex-direction: row; align-items: center; }
 .cas-setup-col-plat { flex-grow: 1; flex-basis: 0; flex-shrink: 1; }
 .cas-setup-cell { flex-direction: row; align-items: flex-start; margin-bottom: 3px; }
 .cas-setup-cell__txt { font-size: 11px; white-space: normal; flex-grow: 1; margin-left: 6px; }
 .cas-setup-cell--link:hover .cas-setup-cell__txt { color: #FFFFFF; }
+.cas-setup-cell__input { margin-top: 3px; min-width: 150px; }
 .cas-muted-cell { color: #6E6E6E; font-size: 11px; }
 .cas-setup-summary { margin-top: 10px; font-size: 12px; }
 .cas-setup-summary--ok { color: #4ADE80; }
@@ -442,3 +453,20 @@
     display: none;
 }
 .cas-tab__badge--on { display: flex; }
+
+/* ── CAS ad-format controls (Configuration screen) ──────────────────────────── */
+/* CAS configuration card (formats + audience), full-width under the status grid */
+.cas-cfg { flex-direction: column; margin-top: 8px; padding-top: 8px; border-top-width: 1px; border-top-color: #3D3D3D; }
+.cas-cfg__title { color: #9AA0A6; font-size: 10px; -unity-font-style: bold; margin-bottom: 8px; }
+.cas-cfg__grouplabel { color: #9AA0A6; font-size: 10px; -unity-font-style: bold; margin-bottom: 4px; }
+.cas-cfg__grouplabel--spaced { margin-top: 12px; }
+/* Ad formats: two toggles per row (flex-wrap → 2×2). Networks: Optimal/Families side by side. */
+.cas-cfg__grid { flex-direction: row; flex-wrap: wrap; }
+.cas-cfg__row { flex-direction: row; }
+.cas-cfg__toggle { margin-bottom: 2px; }
+.cas-cfg__toggle--half { flex-grow: 1; flex-basis: 42%; margin-right: 10px; margin-bottom: 2px; }
+.cas-cfg__hint { color: #6E6E6E; font-size: 10px; margin-top: 6px; white-space: normal; }
+
+/* ── Android build templates banner ──────────────────────────────────────── */
+.cas-androidbanner { flex-direction: column; padding: 8px 10px; margin-bottom: 6px; background-color: #3A332A; border-left-width: 3px; border-left-color: #E8B463; }
+.cas-androidbanner__msg { color: #E8C896; font-size: 11px; white-space: normal; margin-bottom: 6px; }

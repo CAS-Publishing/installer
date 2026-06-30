@@ -133,8 +133,11 @@ namespace PSV.Installer.Migrator
     }
 
     /// <summary>
-    /// Backup, then delete, a file or directory under <c>Assets/</c>.
-    /// The executor (Phase 4b) snapshots the path into the backup archive before deletion.
+    /// Delete a file or directory under <c>Assets/</c>. (The name is historical — there is NO backup
+    /// archive.) The runner deletes via <c>AssetDatabase.DeleteAsset</c> / <c>File</c>/<c>Directory</c>;
+    /// recovery is delegated entirely to the client's git, which is why <see cref="MigrationRunner"/>
+    /// refuses untracked/dirty paths unless <see cref="IgnoreGitGuard"/> is set. With
+    /// <see cref="IgnoreGitGuard"/> = true the deletion is PERMANENT and unrecoverable.
     /// </summary>
     public sealed class BackupAndDeletePath : MigrationAction
     {
@@ -144,9 +147,17 @@ namespace PSV.Installer.Migrator
         /// </summary>
         public string RelativePath { get; }
 
-        public BackupAndDeletePath(string relativePath)
+        /// <summary>
+        /// When true, the runner deletes even if git can't recover the path (untracked/dirty).
+        /// PathSafety (no escaping Assets/) is still enforced. Set only after an explicit
+        /// "Delete anyway" confirmation — the deletion is permanent.
+        /// </summary>
+        public bool IgnoreGitGuard { get; }
+
+        public BackupAndDeletePath(string relativePath, bool ignoreGitGuard = false)
         {
             RelativePath = relativePath;
+            IgnoreGitGuard = ignoreGitGuard;
         }
     }
 }

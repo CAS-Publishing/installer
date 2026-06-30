@@ -20,6 +20,7 @@ namespace PSV.Installer.Wizard
         private bool _bound;
         private readonly VisualElement _rowsHost;
         private readonly Label _summary;
+        private readonly Label _thPlat;
 
         public SetupScreen()
         {
@@ -27,6 +28,7 @@ namespace PSV.Installer.Wizard
             WizardAssets.CloneInto("Setup", Root);
             _rowsHost = Root.Q<VisualElement>("setup-rows");
             _summary  = Root.Q<Label>("setup-summary");
+            _thPlat   = Root.Q<Label>("setup-th-plat");
         }
 
         public void OnEnter(WizardRouter router)
@@ -36,7 +38,7 @@ namespace PSV.Installer.Wizard
             {
                 _bound = true;
                 var refresh = Root.Q<Button>("setup-refresh");
-                if (refresh != null) refresh.clicked += Rebuild;
+                if (refresh != null) refresh.clicked += RefreshFromDisk;
                 var back = Root.Q<Button>("setup-back");
                 if (back != null) back.clicked += () => _router.GoTo("components");
             }
@@ -44,10 +46,42 @@ namespace PSV.Installer.Wizard
             Rebuild();
         }
 
+        // The Refresh button forces a re-read: drop the session caches so the scan + catalog are
+        // re-evaluated from disk (otherwise Refresh would just re-render the already-cached state).
+        private void RefreshFromDisk()
+        {
+            PSV.Installer.Catalog.CatalogLoader.InvalidateCache();
+            ComponentStatusProvider.InvalidateCache();
+            Rebuild();
+        }
+
         private void Rebuild()
         {
             if (_rowsHost == null) return;
             _rowsHost.Clear();
+
+            var platform = PlatformDetect.ActivePlatform();
+            if (_thPlat != null) _thPlat.text = platform;
+
+            // Android build readiness: missing gradle/manifest templates make a fresh project fail to
+            // build with a non-obvious cause — surface it with a one-click Enable. Only relevant when
+            // Android is the active target: on an iOS project the banner (and its Enable button, which
+            // would write Android templates) is noise/wrong, so it follows the screen's platform scope.
+            if (platform == "Android" && AndroidBuildFix.MissingNow() is var missingAndroid && missingAndroid.Count > 0)
+            {
+                var banner = new VisualElement();
+                banner.AddToClassList("cas-androidbanner");
+                var msg = new Label($"⚠ {missingAndroid.Count} Android build template(s) missing — " +
+                                    "the project may not build until they're enabled.");
+                msg.AddToClassList("cas-androidbanner__msg");
+                banner.Add(msg);
+                var fix = new Button(() => { AndroidBuildFix.Ensure(); Rebuild(); })
+                    { text = "Enable Android build settings" };
+                fix.AddToClassList("cas-btn");
+                fix.AddToClassList("cas-btn--primary");
+                banner.Add(fix);
+                _rowsHost.Add(banner);
+            }
 
             if (!SetupModel.TryBuild(out var rows, out var error))
             {
@@ -61,9 +95,9 @@ namespace PSV.Installer.Wizard
             foreach (var row in rows)
             {
                 if (!row.Installed) continue; // Configuration lists only installed components
-                _rowsHost.Add(BuildRow(row, alt: installed % 2 == 1));
+                _rowsHost.Add(BuildRow(row, alt: installed % 2 == 1, platform));
                 installed++;
-                attention += CountAttention(row.Android) + CountAttention(row.IOS);
+                attention += CountAttention(PickForPlatform(row.Android, row.IOS, platform));
             }
 
             if (installed == 0)
@@ -111,7 +145,7 @@ namespace PSV.Installer.Wizard
             return n;
         }
 
-        private static VisualElement BuildRow(SetupModel.Row row, bool alt)
+        private static VisualElement BuildRow(SetupModel.Row row, bool alt, string platform)
         {
             var el = new VisualElement();
             el.AddToClassList("cas-setup-row");
@@ -135,9 +169,17 @@ namespace PSV.Installer.Wizard
             head.Add(name);
             comp.Add(head);
 
-            el.Add(comp);
-            el.Add(BuildPlatformColumn(row.Android));
-            el.Add(BuildPlatformColumn(row.IOS));
+            // Status line: 2-column grid (Component | active platform), read-only.
+            var grid = new VisualElement();
+            grid.AddToClassList("cas-setup-row__grid");
+            grid.Add(comp);
+            grid.Add(BuildPlatformColumn(PickForPlatform(row.Android, row.IOS, platform)));
+            el.Add(grid);
+
+            // CAS gets a dedicated, labelled config card BELOW the status grid (formats + audience),
+            // for the active platform only.
+            if (row.AdFormats)
+                el.Add(BuildCasConfig(platform));
             return el;
         }
 
@@ -177,7 +219,8 @@ namespace PSV.Installer.Wizard
             txt.AddToClassList("cas-status--" + tone);
             line.Add(txt);
 
-            // Each cell opens THIS platform's settings/help (CAS has separate Android/iOS assets).
+            // Read-only: each cell opens THIS platform's settings/help (CAS has separate Android/iOS
+            // assets). CAS ID is entered on Welcome, not edited here.
             line.AddToClassList("cas-setup-cell--link");
             line.tooltip = cell.Req != null && cell.Req.Kind == "assetFile"
                 ? "Open the file or how to get it"
@@ -251,5 +294,84 @@ namespace PSV.Installer.Wizard
                     return label + (string.IsNullOrEmpty(r.Error) ? "—" : r.Error);
             }
         }
+
+        // CAS-only configuration card for the active platform: ad formats as a 2-up grid and the
+        // mediation network sets as side-by-side checkboxes, so the card fills the width and reads as
+        // two compact groups instead of one tall single-column list. The platform is folded into the
+        // title (the status grid above already names it), dropping a redundant header row.
+        private static VisualElement BuildCasConfig(string platform)
+        {
+            var card = new VisualElement();
+            card.AddToClassList("cas-cfg");
+
+            var title = new Label("CAS CONFIGURATION · " + platform);
+            title.AddToClassList("cas-cfg__title");
+            card.Add(title);
+
+            // Ad formats — 2×2 grid (flex-wrap) to use the horizontal space and stay short.
+            card.Add(GroupLabel("Ad formats", spaced: false));
+            var flags = CasSettingsWriter.ReadAdFlags(platform);
+            var grid = new VisualElement();
+            grid.AddToClassList("cas-cfg__grid");
+            grid.Add(Half(FormatToggle(platform, "Banner", AdFlagsBits.Banner, flags)));
+            grid.Add(Half(FormatToggle(platform, "Interstitial", AdFlagsBits.Interstitial, flags)));
+            grid.Add(Half(FormatToggle(platform, "Rewarded", AdFlagsBits.Rewarded, flags)));
+            grid.Add(Half(FormatToggle(platform, "App Open", AdFlagsBits.AppOpen, flags)));
+            card.Add(grid);
+
+            // Mediation network SETS as INDEPENDENT checkboxes side by side, mirroring CAS's own model:
+            // OptimalAds and FamiliesAds can each be on/off independently. Each toggle activates/disables
+            // that one solution via CasMediation; on a reflection failure the toggle reverts so the UI
+            // never claims a state that isn't on disk.
+            card.Add(GroupLabel("Mediation networks", spaced: true));
+            var bt = platform == "iOS" ? UnityEditor.BuildTarget.iOS : UnityEditor.BuildTarget.Android;
+            var nets = new VisualElement();
+            nets.AddToClassList("cas-cfg__row");
+            nets.Add(Half(SolutionToggle("Optimal", bt, families: false)));
+            nets.Add(Half(SolutionToggle("Families", bt, families: true)));
+            card.Add(nets);
+
+            var hint = new Label("Optimal = full adult network set · Families = child-directed set");
+            hint.AddToClassList("cas-cfg__hint");
+            card.Add(hint);
+            return card;
+        }
+
+        private static Label GroupLabel(string text, bool spaced)
+        {
+            var l = new Label(text);
+            l.AddToClassList("cas-cfg__grouplabel");
+            if (spaced) l.AddToClassList("cas-cfg__grouplabel--spaced");
+            return l;
+        }
+
+        // Marks a toggle as a half-width grid cell (two per row).
+        private static Toggle Half(Toggle t) { t.AddToClassList("cas-cfg__toggle--half"); return t; }
+
+        private static Toggle FormatToggle(string platform, string label, int flag, int currentMask)
+        {
+            var t = new Toggle(label) { value = AdFlagsBits.HasFlag(currentMask, flag) };
+            t.AddToClassList("cas-cfg__toggle");
+            t.RegisterValueChangedCallback(e =>
+                CasSettingsWriter.SetAdFlags(platform, AdFlagsBits.WithFlag(CasSettingsWriter.ReadAdFlags(platform), flag, e.newValue)));
+            return t;
+        }
+
+        // One CAS mediation solution as an independent checkbox. Initial state is the best-effort
+        // installed-read; on a failed apply the value reverts so the box reflects on-disk reality.
+        private static Toggle SolutionToggle(string label, UnityEditor.BuildTarget platform, bool families)
+        {
+            var t = new Toggle(label) { value = CasMediation.IsSolutionInstalled(platform, families) };
+            t.AddToClassList("cas-cfg__toggle");
+            t.RegisterValueChangedCallback(e =>
+            {
+                if (!CasMediation.SetSolution(platform, families, e.newValue))
+                    t.SetValueWithoutNotify(!e.newValue);
+            });
+            return t;
+        }
+
+        internal static T PickForPlatform<T>(T android, T ios, string platform) =>
+            platform == "iOS" ? ios : android;
     }
 }

@@ -21,6 +21,13 @@ namespace PSV.Installer.Migrator
     {
         private const string LogPrefix = "[PSV Installer]";
 
+        /// <summary>
+        /// Marker embedded in a delete failure message when the git recoverability guard blocked the
+        /// delete (untracked/dirty). Consumers detect the "offer Delete anyway" case by testing
+        /// failures for this substring — share the constant so a copy reword can't silently break it.
+        /// </summary>
+        public const string GitRefusalMarker = "refusing to delete";
+
         private readonly string _projectRoot;
         private readonly string _manifestPath;
 
@@ -66,6 +73,9 @@ namespace PSV.Installer.Migrator
                 {
                     ManifestWriter.ApplyActions(_manifestPath, manifestMutations);
                     executedCount += manifestMutations.Count;
+                    // An installer-driven manifest change happened → a UPM domain reload will follow.
+                    // Signal it so the wizard auto-reopens (to Components) even after first-run intro.
+                    PSV.Installer.Common.InstallReloadSignal.MarkPending();
                 }
                 catch (Exception e)
                 {
@@ -84,9 +94,11 @@ namespace PSV.Installer.Migrator
                     return new ApplyResult(false, executedCount, failures);
                 }
 
-                if (!GitGuard.IsTrackedAndClean(absolutePath, out var gitReason))
+                // PathSafety (above) is always enforced. The git recoverability guard can be
+                // explicitly overridden via IgnoreGitGuard (the user's "Delete anyway" choice).
+                if (!action.IgnoreGitGuard && !GitGuard.IsTrackedAndClean(absolutePath, out var gitReason))
                 {
-                    failures.Add($"DeletePath({action.RelativePath}): refusing to delete — {gitReason}");
+                    failures.Add($"DeletePath({action.RelativePath}): {GitRefusalMarker} — {gitReason}");
                     return new ApplyResult(false, executedCount, failures);
                 }
 

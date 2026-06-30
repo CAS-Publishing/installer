@@ -1,0 +1,70 @@
+# Review package: 9c5fd87..6ff01d3
+
+## Commits
+6ff01d3 feat(installer): BackupAndDeletePath.IgnoreGitGuard (PathSafety still enforced) (#4)
+
+## Files changed
+ Editor/Migrator/MigrationAction.cs | 10 +++++++++-
+ Editor/Migrator/Migrator.cs        |  4 +++-
+ 2 files changed, 12 insertions(+), 2 deletions(-)
+
+## Diff
+diff --git a/Editor/Migrator/MigrationAction.cs b/Editor/Migrator/MigrationAction.cs
+index 990ef0b..dca012f 100644
+--- a/Editor/Migrator/MigrationAction.cs
++++ b/Editor/Migrator/MigrationAction.cs
+@@ -137,16 +137,24 @@ namespace PSV.Installer.Migrator
+     /// The executor (Phase 4b) snapshots the path into the backup archive before deletion.
+     /// </summary>
+     public sealed class BackupAndDeletePath : MigrationAction
+     {
+         /// <summary>
+         /// Path relative to <c>Assets/</c> (e.g. "Plugins/Firebase").
+         /// The executor resolves this against <c>Application.dataPath</c>.
+         /// </summary>
+         public string RelativePath { get; }
+ 
+-        public BackupAndDeletePath(string relativePath)
++        /// <summary>
++        /// When true, the runner deletes even if git can't recover the path (untracked/dirty).
++        /// PathSafety (no escaping Assets/) is still enforced. Set only after an explicit
++        /// "Delete anyway" confirmation — the deletion is permanent.
++        /// </summary>
++        public bool IgnoreGitGuard { get; }
++
++        public BackupAndDeletePath(string relativePath, bool ignoreGitGuard = false)
+         {
+             RelativePath = relativePath;
++            IgnoreGitGuard = ignoreGitGuard;
+         }
+     }
+ }
+diff --git a/Editor/Migrator/Migrator.cs b/Editor/Migrator/Migrator.cs
+index 7cfd77d..3775b58 100644
+--- a/Editor/Migrator/Migrator.cs
++++ b/Editor/Migrator/Migrator.cs
+@@ -80,21 +80,23 @@ namespace PSV.Installer.Migrator
+             // ── 2. Delete legacy asset paths LAST (irreversible) ──
+             var assetsRoot = Application.dataPath;
+             foreach (var action in plan.OfType<BackupAndDeletePath>())
+             {
+                 if (!PathSafety.TryResolveContained(assetsRoot, action.RelativePath, out var absolutePath, out var pathError))
+                 {
+                     failures.Add($"DeletePath({action.RelativePath}): {pathError}");
+                     return new ApplyResult(false, executedCount, failures);
+                 }
+ 
+-                if (!GitGuard.IsTrackedAndClean(absolutePath, out var gitReason))
++                // PathSafety (above) is always enforced. The git recoverability guard can be
++                // explicitly overridden via IgnoreGitGuard (the user's "Delete anyway" choice).
++                if (!action.IgnoreGitGuard && !GitGuard.IsTrackedAndClean(absolutePath, out var gitReason))
+                 {
+                     failures.Add($"DeletePath({action.RelativePath}): refusing to delete — {gitReason}");
+                     return new ApplyResult(false, executedCount, failures);
+                 }
+ 
+                 if (!DeletePath(absolutePath, out var deleteError))
+                 {
+                     failures.Add($"DeletePath({action.RelativePath}): {deleteError}");
+                     return new ApplyResult(false, executedCount, failures);
+                 }

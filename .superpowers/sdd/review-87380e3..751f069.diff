@@ -1,0 +1,114 @@
+# Review package: 87380e3..751f069
+
+## Commits
+751f069 feat(installer): OpenAtWelcome with preselected platform + Welcome hint consume
+
+## Files changed
+ Editor/Wizard/InstallerWizardWindow.cs | 27 +++++++++++++++++++++++++++
+ Editor/Wizard/Screens/WelcomeScreen.cs |  5 +++++
+ 2 files changed, 32 insertions(+)
+
+## Diff
+diff --git a/Editor/Wizard/InstallerWizardWindow.cs b/Editor/Wizard/InstallerWizardWindow.cs
+index cdba4f2..9225ffc 100644
+--- a/Editor/Wizard/InstallerWizardWindow.cs
++++ b/Editor/Wizard/InstallerWizardWindow.cs
+@@ -22,20 +22,25 @@ namespace PSV.Installer.Wizard
+ 
+         // Order is the wizard order; element [0] is the entry screen.
+         private static readonly string[] ScreenOrder =
+             { "welcome", "integration", "components", "hub", "progress", "done", "settings", "setup", "about" };
+ 
+         // Persists the current screen across domain reloads (e.g. the reload UPM triggers after
+         // an install) so the wizard returns to where the user was instead of jumping to Welcome.
+         // SessionState survives reloads and resets on editor restart.
+         private const string CurrentScreenKey = "PSV.Installer.Wizard.CurrentScreen";
+ 
++        // Set by OpenAtWelcome so the Welcome screen preselects a specific platform on a build-target
++        // switch even when the window was already open (its WelcomeScreen kept its construction-time
++        // platform). One-shot, consumed in WelcomeScreen.OnEnter.
++        private const string RequestPlatformKey = "PSV.Installer.Wizard.RequestPlatform";
++
+         // Screens that appear as top tabs; everything else is a full-screen flow state.
+         // Welcome + Integration are first-run-only flow screens — once set up, the user never
+         // returns to the install picker, so they are NOT tabs.
+         private static readonly string[] TabScreens = { "components", "setup", "about" };
+ 
+         // Per-project key — EditorPrefs is machine-global, so include the project path to keep
+         // the intro flag scoped to THIS project (each client project is first-run on its own).
+         private static string IntroDoneKey => "PSV.Installer.Wizard.IntroDone:" + Application.dataPath;
+ 
+         /// <summary>True once the user has passed the first-run intro (Integration), per project,
+@@ -78,20 +83,42 @@ namespace PSV.Installer.Wizard
+         [MenuItem("PSV Game Studio/Wizard (Restart Intro)")]
+         public static void OpenFirstRun()
+         {
+             IntroDone = false;
+             SessionState.SetString(CurrentScreenKey, "welcome"); // don't restore a previous tab
+             Open();
+             if (HasOpenInstances<InstallerWizardWindow>())
+                 GetWindow<InstallerWizardWindow>()._router?.GoTo("welcome");
+         }
+ 
++        /// <summary>
++        /// Opens the wizard at Welcome with <paramref name="platform"/> preselected (the build-target
++        /// watcher uses this). Does NOT clear <see cref="IntroDone"/> — it is a targeted "configure
++        /// this platform" prompt, not a first-run reset.
++        /// </summary>
++        public static void OpenAtWelcome(string platform)
++        {
++            SessionState.SetString(RequestPlatformKey, platform ?? string.Empty);
++            SessionState.SetString(CurrentScreenKey, "welcome");
++            Open();
++            if (HasOpenInstances<InstallerWizardWindow>())
++                GetWindow<InstallerWizardWindow>()._router?.GoTo("welcome");
++        }
++
++        /// <summary>Returns and clears the platform requested by <see cref="OpenAtWelcome"/> (one-shot).</summary>
++        internal static string ConsumeRequestedPlatform()
++        {
++            var p = SessionState.GetString(RequestPlatformKey, string.Empty);
++            if (!string.IsNullOrEmpty(p)) SessionState.EraseString(RequestPlatformKey);
++            return p;
++        }
++
+         /// <summary>Closes the window if open — used by the All Done screen's Close button.</summary>
+         public static void CloseActive()
+         {
+             if (HasOpenInstances<InstallerWizardWindow>())
+                 GetWindow<InstallerWizardWindow>().Close();
+         }
+ 
+         /// <summary>
+         /// Opens the wizard only when the scan report differs from the last one shown
+         /// (shared hash gate via <see cref="ScanReportStore"/>, so it doesn't re-pop on every
+diff --git a/Editor/Wizard/Screens/WelcomeScreen.cs b/Editor/Wizard/Screens/WelcomeScreen.cs
+index 85791ca..667b42c 100644
+--- a/Editor/Wizard/Screens/WelcomeScreen.cs
++++ b/Editor/Wizard/Screens/WelcomeScreen.cs
+@@ -75,20 +75,25 @@ namespace PSV.Installer.Wizard
+                 _bound = true;
+ 
+                 _methodUpm?.RegisterCallback<ClickEvent>(_ => SelectMethod(InstallMethod.Upm));
+                 _methodGit?.RegisterCallback<ClickEvent>(_ => SelectMethod(InstallMethod.Git));
+                 _tabAndroid?.RegisterCallback<ClickEvent>(_ => SelectPlatform("Android"));
+                 _tabIos?.RegisterCallback<ClickEvent>(_ => SelectPlatform("iOS"));
+                 _field?.RegisterValueChangedCallback(_ => { RefreshNext(); UpdatePlaceholder(); });
+                 if (_next != null) _next.clicked += OnNext;
+             }
+ 
++            // A build-target switch may request a specific platform (overrides the construction-time
++            // default, which matters when this window was already open). One-shot.
++            var requested = InstallerWizardWindow.ConsumeRequestedPlatform();
++            if (!string.IsNullOrEmpty(requested)) _platform = requested;
++
+             ShowPlatform(_platform);
+             ShowMethod(_method);
+         }
+ 
+         private void SelectPlatform(string platform)
+         {
+             if (_platform == platform) return;
+             ShowPlatform(platform);
+         }
+ 

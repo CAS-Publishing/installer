@@ -28,12 +28,5 @@ namespace PSV.Installer.Wizard
             var v = Get(componentId, platform);
             return string.IsNullOrEmpty(v) ? (fallback ?? "") : v;
         }
-
-        /// <summary>The project's application bundle identifier for a platform (CAS ID default).</summary>
-        public static string BundleId(BuildTargetGroup group)
-        {
-            try { return PlayerSettings.GetApplicationIdentifier(group) ?? ""; }
-            catch { return ""; }
-        }
     }
 }

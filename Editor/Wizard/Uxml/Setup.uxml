@@ -7,8 +7,7 @@
 
             <ui:VisualElement class="cas-setup-head">
                 <ui:Label text="Component" class="cas-th cas-setup-col-comp" />
-                <ui:Label text="Android" class="cas-th cas-setup-col-plat" />
-                <ui:Label text="iOS" class="cas-th cas-setup-col-plat" />
+                <ui:Label name="setup-th-plat" class="cas-th cas-setup-col-plat" />
             </ui:VisualElement>
 
             <ui:ScrollView name="setup-scroll" class="cas-table-scroll" mode="Vertical">

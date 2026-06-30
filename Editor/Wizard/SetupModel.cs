@@ -20,9 +20,11 @@ namespace PSV.Installer.Wizard
 
         internal sealed class Row
         {
+            public string Id;
             public string Name;
             public string Logo;
             public bool Installed;
+            public bool AdFormats;
             public readonly List<Cell> Android = new List<Cell>();
             public readonly List<Cell> IOS = new List<Cell>();
         }
@@ -58,7 +60,7 @@ namespace PSV.Installer.Wizard
             foreach (var id in ComponentStatusProvider.DefaultIds)
             {
                 ComponentStatusProvider.TryGetDefaultDisplay(id, out var name, out var logo);
-                var row = new Row { Name = name, Logo = logo };
+                var row = new Row { Id = id, Name = name, Logo = logo };
                 installedById.TryGetValue(id, out row.Installed);
 
                 // Only INSTALLED components have their per-platform config evaluated. Each cell
@@ -73,6 +75,11 @@ namespace PSV.Installer.Wizard
                         else if (req.Platform == "Android") row.Android.Add(cell);
                         else { row.Android.Add(cell); row.IOS.Add(cell); }
                     }
+
+                    // Detect if this component has CAS ad-format configuration
+                    if (reqs != null)
+                        foreach (var req in reqs)
+                            if (req != null && req.AdFormats) { row.AdFormats = true; break; }
                 }
 
                 rows.Add(row);

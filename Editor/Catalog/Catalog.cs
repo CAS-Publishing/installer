@@ -122,6 +122,10 @@ namespace PSV.Installer.Catalog
         /// </summary>
         [JsonProperty("assetRoots")]         public List<string> AssetRoots;
 
+        /// <summary>Exact/glob file names (single '*') of this SDK's native libs in Assets/Plugins to
+        /// auto-delete on migrate (e.g. "libFirebaseCppApp.a"). Precise — never broad globs.</summary>
+        [JsonProperty("pluginFiles")] public List<string> PluginFiles;
+
         /// <summary>
         /// Individual SDK files the manual (.unitypackage) install SCATTERS outside <see cref="AssetRoots"/>
         /// into shared folders (e.g. Tenjin's <c>BuildPostProcessor.cs</c> / <c>Dependencies.xml</c> dropped
@@ -214,6 +218,19 @@ namespace PSV.Installer.Catalog
 
         /// <summary>A value that counts as "not configured" (e.g. the CAS placeholder "demo").</summary>
         [JsonProperty("placeholder")] public string Placeholder;
+
+        /// <summary>Optional per-platform validation regex for the wizard input (e.g. CAS bundle/numeric).</summary>
+        [JsonProperty("regex")] public string Regex;
+
+        /// <summary>Optional placeholder hint text shown in the empty wizard input.</summary>
+        [JsonProperty("hint")] public string Hint;
+
+        /// <summary>When true, the Configuration screen renders this settings field as an editable
+        /// input that writes the value back to the settings asset (e.g. CAS managerId). Default false.</summary>
+        [JsonProperty("editable")] public bool Editable;
+
+        /// <summary>When true, the Configuration screen renders CAS ad-format toggles and audience/network controls for this component.</summary>
+        [JsonProperty("adFormats")] public bool AdFormats;
 
         /// <summary>Optional Unity menu path to open the relevant settings window (e.g. CAS).</summary>
         [JsonProperty("openMenu")] public string OpenMenu;

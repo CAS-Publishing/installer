@@ -1,6 +1,6 @@
 {
   "name": "com.psvgamestudio.installer",
-  "version": "0.0.1-preview.25",
+  "version": "0.0.1-preview.34",
   "displayName": "PSV Game Studio Installer",
   "description": "One-click Unity installer for the PSV / CAS publishing SDK. Scans the project, migrates legacy installs to UPM, manages registries, and keeps installed packages up to date. Editor-only.",
   "unity": "2022.3",
@@ -23,6 +23,6 @@
   "repository": {
     "url": "ssh://gitlab@gitlab.psvgamestudio.xyz:9422/psvtech/prototypemodules/psv-installer-sdk.git",
     "type": "git",
-    "revision": "6459de1912cba8e4cbf4e6f6c294fcff7bff482d"
+    "revision": "da17129e4372463d0f0d563a2a73884d7a5dc4c5"
   }
 }

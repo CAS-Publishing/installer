@@ -55,6 +55,10 @@ namespace PSV.Installer.Wizard
         /// </summary>
         public static void StartAll(WizardRouter router)
         {
+            // Automatic integration should yield a buildable project — ensure the Android build
+            // templates exist before EDM4U resolves the installed packages' dependencies.
+            AndroidBuildFix.Ensure();
+
             var load = CatalogLoader.Load();
             if (load.Status != CatalogLoadStatus.Ok)
             {

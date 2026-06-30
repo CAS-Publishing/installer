@@ -1,0 +1,497 @@
+diff --git a/Editor/Catalog/Catalog.cs b/Editor/Catalog/Catalog.cs
+index aa53abe..c1c171f 100644
+--- a/Editor/Catalog/Catalog.cs
++++ b/Editor/Catalog/Catalog.cs
+@@ -122,6 +122,10 @@ namespace PSV.Installer.Catalog
+         /// </summary>
+         [JsonProperty("assetRoots")]         public List<string> AssetRoots;
+ 
++        /// <summary>Exact/glob file names (single '*') of this SDK's native libs in Assets/Plugins to
++        /// auto-delete on migrate (e.g. "libFirebaseCppApp.a"). Precise — never broad globs.</summary>
++        [JsonProperty("pluginFiles")] public List<string> PluginFiles;
++
+         /// <summary>
+         /// Individual SDK files the manual (.unitypackage) install SCATTERS outside <see cref="AssetRoots"/>
+         /// into shared folders (e.g. Tenjin's <c>BuildPostProcessor.cs</c> / <c>Dependencies.xml</c> dropped
+@@ -215,6 +219,19 @@ namespace PSV.Installer.Catalog
+         /// <summary>A value that counts as "not configured" (e.g. the CAS placeholder "demo").</summary>
+         [JsonProperty("placeholder")] public string Placeholder;
+ 
++        /// <summary>Optional per-platform validation regex for the wizard input (e.g. CAS bundle/numeric).</summary>
++        [JsonProperty("regex")] public string Regex;
++
++        /// <summary>Optional placeholder hint text shown in the empty wizard input.</summary>
++        [JsonProperty("hint")] public string Hint;
++
++        /// <summary>When true, the Configuration screen renders this settings field as an editable
++        /// input that writes the value back to the settings asset (e.g. CAS managerId). Default false.</summary>
++        [JsonProperty("editable")] public bool Editable;
++
++        /// <summary>When true, the Configuration screen renders CAS ad-format toggles and audience/network controls for this component.</summary>
++        [JsonProperty("adFormats")] public bool AdFormats;
++
+         /// <summary>Optional Unity menu path to open the relevant settings window (e.g. CAS).</summary>
+         [JsonProperty("openMenu")] public string OpenMenu;
+     }
+diff --git a/Editor/Migrator/MigrationAction.cs b/Editor/Migrator/MigrationAction.cs
+index 990ef0b..dca012f 100644
+--- a/Editor/Migrator/MigrationAction.cs
++++ b/Editor/Migrator/MigrationAction.cs
+@@ -144,9 +144,17 @@ namespace PSV.Installer.Migrator
+         /// </summary>
+         public string RelativePath { get; }
+ 
+-        public BackupAndDeletePath(string relativePath)
++        /// <summary>
++        /// When true, the runner deletes even if git can't recover the path (untracked/dirty).
++        /// PathSafety (no escaping Assets/) is still enforced. Set only after an explicit
++        /// "Delete anyway" confirmation — the deletion is permanent.
++        /// </summary>
++        public bool IgnoreGitGuard { get; }
++
++        public BackupAndDeletePath(string relativePath, bool ignoreGitGuard = false)
+         {
+             RelativePath = relativePath;
++            IgnoreGitGuard = ignoreGitGuard;
+         }
+     }
+ }
+diff --git a/Editor/Migrator/Migrator.cs b/Editor/Migrator/Migrator.cs
+index 9126c6f..3775b58 100644
+--- a/Editor/Migrator/Migrator.cs
++++ b/Editor/Migrator/Migrator.cs
+@@ -66,6 +66,9 @@ namespace PSV.Installer.Migrator
+                 {
+                     ManifestWriter.ApplyActions(_manifestPath, manifestMutations);
+                     executedCount += manifestMutations.Count;
++                    // An installer-driven manifest change happened → a UPM domain reload will follow.
++                    // Signal it so the wizard auto-reopens (to Components) even after first-run intro.
++                    PSV.Installer.Common.InstallReloadSignal.MarkPending();
+                 }
+                 catch (Exception e)
+                 {
+@@ -84,7 +87,9 @@ namespace PSV.Installer.Migrator
+                     return new ApplyResult(false, executedCount, failures);
+                 }
+ 
+-                if (!GitGuard.IsTrackedAndClean(absolutePath, out var gitReason))
++                // PathSafety (above) is always enforced. The git recoverability guard can be
++                // explicitly overridden via IgnoreGitGuard (the user's "Delete anyway" choice).
++                if (!action.IgnoreGitGuard && !GitGuard.IsTrackedAndClean(absolutePath, out var gitReason))
+                 {
+                     failures.Add($"DeletePath({action.RelativePath}): refusing to delete — {gitReason}");
+                     return new ApplyResult(false, executedCount, failures);
+diff --git a/Editor/Tests/AndroidBuildTemplatesTests.cs b/Editor/Tests/AndroidBuildTemplatesTests.cs
+new file mode 100644
+index 0000000..0e0b67b
+--- /dev/null
++++ b/Editor/Tests/AndroidBuildTemplatesTests.cs
+@@ -0,0 +1,33 @@
++using System.Collections.Generic;
++using NUnit.Framework;
++using PSV.Installer.Wizard;
++
++namespace PSV.Installer.Tests
++{
++    public class AndroidBuildTemplatesTests
++    {
++        [Test] public void Required_has_six()
++            => Assert.AreEqual(6, AndroidBuildTemplates.Required.Count);
++
++        [Test] public void Missing_none_when_all_present()
++            => Assert.IsEmpty(AndroidBuildTemplates.Missing(new List<string>(AndroidBuildTemplates.Required)));
++
++        [Test] public void Missing_all_when_none_present()
++            => Assert.AreEqual(AndroidBuildTemplates.Required.Count,
++                               AndroidBuildTemplates.Missing(new List<string>()).Count);
++
++        [Test] public void Missing_is_case_insensitive()
++            => Assert.IsEmpty(AndroidBuildTemplates.Missing(new List<string> {
++                "MAINTEMPLATE.GRADLE", "launchertemplate.gradle", "baseProjectTemplate.gradle",
++                "gradleTemplate.properties", "settingsTemplate.gradle", "androidmanifest.xml" }));
++
++        [Test] public void Missing_reports_the_absent_one()
++        {
++            var present = new List<string>(AndroidBuildTemplates.Required);
++            present.Remove("AndroidManifest.xml");
++            var missing = AndroidBuildTemplates.Missing(present);
++            Assert.AreEqual(1, missing.Count);
++            Assert.AreEqual("AndroidManifest.xml", missing[0]);
++        }
++    }
++}
+diff --git a/Editor/Tests/GitSourceStatusTests.cs b/Editor/Tests/GitSourceStatusTests.cs
+new file mode 100644
+index 0000000..8353a2f
+--- /dev/null
++++ b/Editor/Tests/GitSourceStatusTests.cs
+@@ -0,0 +1,45 @@
++using NUnit.Framework;
++using PSV.Installer.Wizard;
++using PSV.Installer.Scanner;
++
++namespace PSV.Installer.Tests
++{
++    public class GitSourceStatusTests
++    {
++        private static readonly (string, string, string, string) Cas =
++            ("com.cleversolutions.ads.unity", "CAS SDK", "Ads", "cas");
++
++        [Test]
++        public void Git_external_offers_switch_to_upm()
++        {
++            var e = new ExternalScanResult("com.cleversolutions.ads.unity", "CAS SDK",
++                ExternalState.UpmCurrent, "https://github.com/cleveradssolutions/CAS-Unity.git#4.7.4");
++            var s = ComponentStatusProvider.FromExternal(Cas, e);
++            Assert.IsTrue(s.GitInstalled);
++            Assert.AreEqual("Installed (git)", s.StatusText);
++            Assert.AreEqual("Switch to UPM", s.ActionText);
++            Assert.IsTrue(s.Actionable);
++        }
++
++        [Test]
++        public void Registry_external_is_up_to_date()
++        {
++            var e = new ExternalScanResult("com.cleversolutions.ads.unity", "CAS SDK",
++                ExternalState.UpmCurrent, "4.7.4");
++            var s = ComponentStatusProvider.FromExternal(Cas, e);
++            Assert.IsFalse(s.GitInstalled);
++            Assert.AreEqual("Installed", s.StatusText);
++            Assert.AreEqual("Up to date", s.ActionText);
++            Assert.IsFalse(s.Actionable);
++        }
++
++        [Test] public void FriendlyVersion_git_is_git()
++            => Assert.AreEqual("git", ComponentsScreen.FriendlyVersion("https://x/y.git#1.2.3"));
++
++        [Test] public void FriendlyVersion_file_is_local()
++            => Assert.AreEqual("local", ComponentsScreen.FriendlyVersion("file:../x"));
++
++        [Test] public void FriendlyVersion_semver_passthrough()
++            => Assert.AreEqual("4.7.4", ComponentsScreen.FriendlyVersion("4.7.4"));
++    }
++}
+diff --git a/Editor/Tests/PluginFileMatchTests.cs b/Editor/Tests/PluginFileMatchTests.cs
+new file mode 100644
+index 0000000..b033ffc
+--- /dev/null
++++ b/Editor/Tests/PluginFileMatchTests.cs
+@@ -0,0 +1,26 @@
++using NUnit.Framework;
++using PSV.Installer.Scanner;
++
++namespace PSV.Installer.Tests
++{
++    public class PluginFileMatchTests
++    {
++        [Test] public void Exact_match() => Assert.IsTrue(AssetInstallProbe.MatchesFilePattern("libFirebaseCppApp.a", "libFirebaseCppApp.a"));
++        [Test] public void Exact_mismatch() => Assert.IsFalse(AssetInstallProbe.MatchesFilePattern("libOther.a", "libFirebaseCppApp.a"));
++        [Test] public void Prefix_wildcard() => Assert.IsTrue(AssetInstallProbe.MatchesFilePattern("libFirebaseCppAnalytics.a", "libFirebaseCpp*"));
++        [Test] public void Suffix_wildcard() => Assert.IsTrue(AssetInstallProbe.MatchesFilePattern("libFirebaseCppApp.a", "*.a"));
++        [Test] public void Mid_wildcard() => Assert.IsTrue(AssetInstallProbe.MatchesFilePattern("libFirebaseCppApp.a", "libFirebase*App.a"));
++        [Test] public void Wildcard_no_false_positive() => Assert.IsFalse(AssetInstallProbe.MatchesFilePattern("libUnrelated.a", "libFirebaseCpp*"));
++        [Test] public void Case_insensitive() => Assert.IsTrue(AssetInstallProbe.MatchesFilePattern("LIBFIREBASECPPAPP.A", "libFirebaseCppApp.a"));
++        [Test] public void Null_safe() => Assert.IsFalse(AssetInstallProbe.MatchesFilePattern(null, "x"));
++
++        // IsSafePluginPattern — the deletion-safety gate that rejects over-broad patterns.
++        [Test] public void Safe_exact_name() => Assert.IsTrue(AssetInstallProbe.IsSafePluginPattern("libFirebaseCppApp.a"));
++        [Test] public void Safe_long_prefix_wildcard() => Assert.IsTrue(AssetInstallProbe.IsSafePluginPattern("libFirebaseCpp*"));
++        [Test] public void Unsafe_bare_star() => Assert.IsFalse(AssetInstallProbe.IsSafePluginPattern("*"));
++        [Test] public void Unsafe_extension_glob() => Assert.IsFalse(AssetInstallProbe.IsSafePluginPattern("*.a"));
++        [Test] public void Unsafe_short_prefix() => Assert.IsFalse(AssetInstallProbe.IsSafePluginPattern("lib*"));
++        [Test] public void Unsafe_two_stars() => Assert.IsFalse(AssetInstallProbe.IsSafePluginPattern("libFirebase*App*"));
++        [Test] public void Unsafe_null() => Assert.IsFalse(AssetInstallProbe.IsSafePluginPattern(null));
++    }
++}
+diff --git a/Editor/Wizard/AndroidBuildFix.cs b/Editor/Wizard/AndroidBuildFix.cs
+new file mode 100644
+index 0000000..55ae0ab
+--- /dev/null
++++ b/Editor/Wizard/AndroidBuildFix.cs
+@@ -0,0 +1,109 @@
++using System.Collections.Generic;
++using System.IO;
++using UnityEditor;
++using UnityEngine;
++
++namespace PSV.Installer.Wizard
++{
++    /// <summary>
++    /// Ensures the custom Android build templates exist in <c>Assets/Plugins/Android/</c> by copying the
++    /// running Editor's defaults. Only creates missing files (never overwrites). Graceful: a missing
++    /// default source is logged and skipped — never throws, never half-breaks the project.
++    /// </summary>
++    internal static class AndroidBuildFix
++    {
++        // Resolved at runtime so it matches the running Editor version, wherever it's installed.
++        private static string AndroidPlayerDir => Path.Combine(
++            EditorApplication.applicationContentsPath, "PlaybackEngines", "AndroidPlayer");
++
++        // Per-file Editor default source CANDIDATES — tried in order, first that exists wins. This is
++        // what makes the Fix work across Unity versions (2022.3 and 6000+): the gradle templates keep
++        // their name + the GradleTemplates dir on both, but the Custom Main Manifest default moved
++        // (Unity 6: Apk/UnityManifest.xml; older layouts: GradleTemplates/ or Apk/AndroidManifest.xml).
++        private static IEnumerable<string> EditorSourceCandidates(string destFile)
++        {
++            var ap = AndroidPlayerDir;
++            if (string.Equals(destFile, "AndroidManifest.xml", System.StringComparison.OrdinalIgnoreCase))
++            {
++                yield return Path.Combine(ap, "Apk", "UnityManifest.xml");
++                yield return Path.Combine(ap, "Tools", "GradleTemplates", "AndroidManifest.xml");
++                yield return Path.Combine(ap, "Apk", "AndroidManifest.xml");
++            }
++            else
++            {
++                yield return Path.Combine(ap, "Tools", "GradleTemplates", destFile);
++            }
++        }
++
++        // Minimal valid main manifest — written only if no Editor default manifest is found (Unity
++        // layout differences). Unity merges its own activity/content into it.
++        private const string MinimalMainManifest =
++            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n" +
++            "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n" +
++            "    <application />\n" +
++            "</manifest>\n";
++
++        private static string DestDirAbs => Path.Combine(
++            Application.dataPath, "Plugins", "Android");
++
++        /// <summary>Required templates currently absent from the project.</summary>
++        public static List<string> MissingNow()
++        {
++            var present = new List<string>();
++            if (Directory.Exists(DestDirAbs))
++                foreach (var f in Directory.GetFiles(DestDirAbs))
++                    present.Add(Path.GetFileName(f));
++            return AndroidBuildTemplates.Missing(present);
++        }
++
++        /// <summary>
++        /// Creates any missing Android build template from the Editor default. Returns how many were
++        /// created. Logs (and skips) a template whose Editor default can't be found.
++        /// </summary>
++        public static int Ensure()
++        {
++            var missing = MissingNow();
++            if (missing.Count == 0) return 0;
++
++            Directory.CreateDirectory(DestDirAbs);
++            var created = 0;
++            foreach (var file in missing)
++            {
++                var dest = Path.Combine(DestDirAbs, file);
++                string foundSrc = null;
++                foreach (var cand in EditorSourceCandidates(file))
++                    if (File.Exists(cand)) { foundSrc = cand; break; }
++                try
++                {
++                    if (foundSrc != null)
++                    {
++                        File.Copy(foundSrc, dest, overwrite: false);
++                        created++;
++                    }
++                    else if (string.Equals(file, "AndroidManifest.xml", System.StringComparison.OrdinalIgnoreCase))
++                    {
++                        // No Editor default manifest on any known path — write a minimal valid one so
++                        // the Custom Main Manifest toggle still turns on.
++                        File.WriteAllText(dest, MinimalMainManifest);
++                        created++;
++                    }
++                    else
++                    {
++                        Debug.LogWarning($"[PSV Installer] No Editor default found for '{file}' (looked under " +
++                            $"{AndroidPlayerDir}). Skipped — enable it manually in Player Settings if your build needs it.");
++                    }
++                }
++                catch (System.Exception e)
++                {
++                    Debug.LogWarning($"[PSV Installer] Couldn't create '{file}': {e.Message}");
++                }
++            }
++            if (created > 0)
++            {
++                AssetDatabase.Refresh();
++                Debug.Log($"[PSV Installer] Enabled {created} Android build template(s) under Assets/Plugins/Android.");
++            }
++            return created;
++        }
++    }
++}
+diff --git a/Editor/Wizard/AndroidBuildTemplates.cs b/Editor/Wizard/AndroidBuildTemplates.cs
+new file mode 100644
+index 0000000..20f650d
+--- /dev/null
++++ b/Editor/Wizard/AndroidBuildTemplates.cs
+@@ -0,0 +1,34 @@
++using System.Collections.Generic;
++
++namespace PSV.Installer.Wizard
++{
++    /// <summary>
++    /// The custom Android build templates a buildable EDM4U project needs under
++    /// <c>Assets/Plugins/Android/</c>. Their presence is what enables Unity's "Custom … Template"
++    /// and "Custom Main Manifest" toggles, so EDM4U can inject resolved dependencies.
++    /// </summary>
++    internal static class AndroidBuildTemplates
++    {
++        public const string PluginsAndroidDir = "Assets/Plugins/Android";
++
++        public static readonly IReadOnlyList<string> Required = new[]
++        {
++            "mainTemplate.gradle",
++            "launcherTemplate.gradle",
++            "baseProjectTemplate.gradle",
++            "gradleTemplate.properties",
++            "settingsTemplate.gradle",
++            "AndroidManifest.xml",
++        };
++
++        /// <summary>Required template names not present in <paramref name="presentFileNames"/> (case-insensitive). Pure.</summary>
++        public static List<string> Missing(IEnumerable<string> presentFileNames)
++        {
++            var present = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
++            if (presentFileNames != null) foreach (var n in presentFileNames) if (!string.IsNullOrEmpty(n)) present.Add(n);
++            var missing = new List<string>();
++            foreach (var req in Required) if (!present.Contains(req)) missing.Add(req);
++            return missing;
++        }
++    }
++}
+diff --git a/Editor/Wizard/WizardActions.cs b/Editor/Wizard/WizardActions.cs
+index 07d7c47..d7b34be 100644
+--- a/Editor/Wizard/WizardActions.cs
++++ b/Editor/Wizard/WizardActions.cs
+@@ -1,4 +1,5 @@
+ using System.Collections.Generic;
++using System.Linq;
+ using System.Text;
+ using PSV.Installer.Catalog;
+ using PSV.Installer.Common;
+@@ -72,6 +73,69 @@ namespace PSV.Installer.Wizard
+             return true; // re-scan regardless: reflect the real resulting state
+         }
+ 
++        /// <summary>
++        /// Switches a git-URL-installed external to the scoped-registry package: adds the registry
++        /// scope(s) and AddPackage(id, recommendedVersion), which overwrites the git dependency in
++        /// manifest.json. The normal planner treats a git install as already-current, so this is a
++        /// dedicated path. Behind a confirm dialog.
++        /// </summary>
++        public static bool SwitchToUpm(string componentId, string displayName)
++        {
++            var load = CatalogLoader.Load();
++            if (load.Status != CatalogLoadStatus.Ok)
++            {
++                EditorUtility.DisplayDialog("PSV Installer",
++                    "Catalog is unavailable — cannot switch. " +
++                    (load.Error ?? "Make sure the metadata package is installed."), "OK");
++                return false;
++            }
++
++            var catalog = load.Catalog;
++            ExternalRecord rec = null;
++            if (catalog.External != null)
++                foreach (var e in catalog.External)
++                    if (e != null && e.Id == componentId) { rec = e; break; }
++            if (rec == null)
++            {
++                EditorUtility.DisplayDialog("PSV Installer",
++                    $"{displayName} is not an external record in the catalog — cannot switch.", "OK");
++                return false;
++            }
++
++            var version = !string.IsNullOrEmpty(rec.RecommendedVersion) ? rec.RecommendedVersion : rec.MinVersion;
++            if (string.IsNullOrEmpty(version))
++            {
++                EditorUtility.DisplayDialog("PSV Installer",
++                    $"No version configured for {displayName} in the catalog — cannot switch.", "OK");
++                return false;
++            }
++
++            var plan = new List<MigrationAction>();
++            if (rec.Scopes != null)
++            {
++                var url = ResolveRegistryUrl(catalog, rec);
++                foreach (var scope in rec.Scopes)
++                    if (!string.IsNullOrEmpty(scope))
++                        plan.Add(new AddScopedRegistry(rec.Registry ?? string.Empty, url, scope));
++            }
++            plan.Add(new AddPackage(rec.Id, version));
++
++            if (!EditorUtility.DisplayDialog("PSV Installer",
++                    $"Switch {displayName} from a git URL to the registry version {version}?\n\n" +
++                    "This replaces the git dependency in manifest.json with the scoped-registry package.",
++                    "Switch", "Cancel"))
++                return false;
++
++            var result = new MigrationRunner().Apply(plan);
++            if (result.Success)
++                Debug.Log($"[PSV Installer Wizard] Switched {displayName} to UPM ({rec.Id}@{version}). " +
++                          "Unity will resolve packages now.");
++            else
++                EditorUtility.DisplayDialog("PSV Installer",
++                    $"Switch failed for {displayName}:\n• " + string.Join("\n• ", result.Failures), "OK");
++            return true;
++        }
++
+         /// <summary>
+         /// Removes a single component from <c>Packages/manifest.json</c> (one <see cref="RemovePackage"/>
+         /// action) behind a confirm dialog. Doubles as a recovery path for a botched install. The
+@@ -172,6 +236,12 @@ namespace PSV.Installer.Wizard
+             foreach (var f in AssetInstallProbe.FindSignatureFiles(rec.LegacyAssetFiles, rec.AssetRoots))
+                 if (!deletePaths.Contains(f)) deletePaths.Add(f);
+ 
++            // Precise native libs in the shared Assets/Plugins folder (e.g. libFirebaseCpp*.a) — matched
++            // by exact name/glob from the catalog, so they're deleted with the rest (not left for the
++            // user to prune by hand). Imprecise marker-only leftovers remain in sharedLeftovers below.
++            foreach (var f in AssetInstallProbe.FindPluginFiles(rec.PluginFiles))
++                if (!deletePaths.Contains(f)) deletePaths.Add(f);
++
+             if (deletePaths.Count == 0)
+             {
+                 EditorUtility.DisplayDialog("PSV Installer",
+@@ -202,12 +272,37 @@ namespace PSV.Installer.Wizard
+             var del = new MigrationRunner().Apply(deletePlan);
+             if (!del.Success)
+             {
+-                EditorUtility.DisplayDialog("PSV Installer",
+-                    $"Couldn't remove the manual copy of {displayName}:\n• " +
+-                    string.Join("\n• ", del.Failures) +
+-                    "\n\nCommit those files to git first (so they're recoverable), or delete them " +
+-                    "manually, then migrate again. manifest.json was NOT changed.", "OK");
+-                return true; // re-scan: state is unchanged but the user acted
++                // Offer a permanent "Delete anyway" ONLY when the block was git's recoverability
++                // guard (untracked/dirty). Other failures (PathSafety, IO) are not overridable here.
++                var gitBlocked = del.Failures.Count > 0 &&
++                                 del.Failures.All(f => f.Contains("refusing to delete"));
++
++                if (!gitBlocked || !EditorUtility.DisplayDialog("PSV Installer",
++                        $"Some files of {displayName} aren't tracked by git, so they can't be recovered " +
++                        "if removed:\n• " + string.Join("\n• ", del.Failures) +
++                        "\n\nDelete them PERMANENTLY anyway? This cannot be undone.",
++                        "Delete anyway", "Cancel"))
++                {
++                    EditorUtility.DisplayDialog("PSV Installer",
++                        $"Couldn't remove the manual copy of {displayName}:\n• " +
++                        string.Join("\n• ", del.Failures) +
++                        "\n\nCommit those files to git first (so they're recoverable), or delete them " +
++                        "manually, then migrate again. manifest.json was NOT changed.", "OK");
++                    return true; // re-scan: state unchanged but the user acted
++                }
++
++                // User opted in: retry the same deletes with the git guard overridden (PathSafety still on).
++                var forcePlan = new List<MigrationAction>();
++                foreach (var r in deletePaths) forcePlan.Add(new BackupAndDeletePath(r, ignoreGitGuard: true));
++                var forced = new MigrationRunner().Apply(forcePlan);
++                if (!forced.Success)
++                {
++                    EditorUtility.DisplayDialog("PSV Installer",
++                        $"Delete-anyway still failed for {displayName}:\n• " +
++                        string.Join("\n• ", forced.Failures) +
++                        "\n\nmanifest.json was NOT changed.", "OK");
++                    return true;
++                }
+             }
+ 
+             // STEP 2 — UPM install (registry scope + every resolved module). Safe now the copy is gone.
