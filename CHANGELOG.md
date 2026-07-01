@@ -2,6 +2,25 @@
 
 All notable changes to this package will be documented in this file.
 
+## [0.0.1-preview.35] - 2026-07-01
+
+Release candidate — hardening from a fresh git-URL field test on Unity 6000.3, plus signed Firebase.
+
+- **Auto-install can't hang forever.** A per-step watchdog (150s) and a stuck package-list guard (25s)
+  surface a stalled install instead of an endless spinner, and the driver verifies each step actually
+  added a manifest entry.
+- **The wizard reliably auto-opens on a fresh git install.** A transient "exclusive access … in
+  progress" collision during the first project import no longer latches the once-per-session throttle
+  (only terminal failures do), so the metadata catalog installs and the wizard opens without a manual
+  restart; the redundant post-install re-resolve that could tear down the just-opened window is gone.
+- **Recommended install resumes itself once the catalog is ready** — the "catalog still installing"
+  dead-end now arms a resume that continues automatically after Unity reloads, instead of requiring a
+  manual install + wizard restart.
+- **CAS settings asset is created on recommended install**, not only when you flip an ad-format toggle
+  on Configuration — a clean project now gets its `CASSettings<platform>.asset` with the entered CAS ID.
+- Firebase is now served **signed** (`13.1.0-psv.1`) so Unity 6.3 (6000.3+) no longer flags it as
+  unsigned (via `com.psvgamestudio.installer.metadata` preview.24).
+
 ## [0.0.1-preview.34] - 2026-06-29
 
 - **Configuration scoped to the active platform.** The Configuration tab now shows only the active

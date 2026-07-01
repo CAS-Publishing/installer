@@ -49,7 +49,17 @@ namespace PSV.Installer.Wizard
                 if (string.IsNullOrEmpty(stored)) continue;
 
                 var asset = SetupChecker.LocateAsset(req.AssetPath, req.AssetType);
-                if (asset == null) continue; // CAS not installed / asset not created yet
+                if (asset == null)
+                {
+                    // Clean project: the recommended install just added CAS but no CASSettings asset
+                    // exists yet (CAS creates it lazily via its own window/build). Without this the
+                    // entered id would live only in the keystore and never reach an asset. Create it —
+                    // but only when CAS is actually installed, so we never author a settings asset for
+                    // a platform whose CAS package isn't present.
+                    if (!CasPresence.IsInstalled()) continue;
+                    asset = CasSettingsWriter.EnsureAsset(req.Platform);
+                    if (asset == null) continue; // create failed — warning already logged in the writer
+                }
 
                 var so = new SerializedObject(asset);
                 var prop = so.FindProperty(req.Field);

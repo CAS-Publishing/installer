@@ -50,11 +50,22 @@ namespace PSV.Installer
                 {
                     // Success: do NOT set the guard — IsMetadataInstalled() short-circuits future calls.
                     CatalogUpdater.TrackInstall(CatalogUpdater.InstallGit(), "Metadata (git)");
+                    // We just resolved metadata from the git mirror's main — don't let the post-install
+                    // reload's MaybeAutoUpdate re-resolve the same URL and queue a redundant reload that
+                    // could tear down the just-auto-opened wizard.
+                    PSV.Installer.Bootstrap.SuppressMetadataUpdateThisSession();
                 }
                 catch (Exception e)
                 {
-                    SessionState.SetBool(InstallAttemptedKey, true); // failed — throttle until restart
-                    Debug.LogWarning($"{LogPrefix} Metadata git Client.Add failed: {e.Message}");
+                    // A brand-new project's initial import keeps the Package Manager busy, so this
+                    // first Add often throws a transient "exclusive access … in progress" collision.
+                    // Latching the session throttle on that would strand metadata (and the auto-open)
+                    // for the whole session — only throttle on a terminal failure; retry transient ones
+                    // on the next domain reload.
+                    var transient = InstallRetryPolicy.IsTransient(e.Message);
+                    if (!transient) SessionState.SetBool(InstallAttemptedKey, true);
+                    Debug.LogWarning($"{LogPrefix} Metadata git Client.Add failed " +
+                                     $"({(transient ? "transient — will retry after reload" : "terminal — throttled until restart")}): {e.Message}");
                 }
                 return;
             }
@@ -82,8 +93,12 @@ namespace PSV.Installer
                     }
                     catch (Exception e)
                     {
-                        SessionState.SetBool(InstallAttemptedKey, true); // failed — throttle until restart
-                        Debug.LogWarning($"{LogPrefix} Client.Add failed: {e.Message}");
+                        // Same transient/terminal split as the git path — a PM-busy collision must not
+                        // burn the session's one install attempt.
+                        var transient = InstallRetryPolicy.IsTransient(e.Message);
+                        if (!transient) SessionState.SetBool(InstallAttemptedKey, true);
+                        Debug.LogWarning($"{LogPrefix} Client.Add failed " +
+                                         $"({(transient ? "transient — will retry after reload" : "terminal — throttled until restart")}): {e.Message}");
                     }
                 },
                 onFailure: err =>

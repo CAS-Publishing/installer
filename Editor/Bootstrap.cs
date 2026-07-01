@@ -71,6 +71,15 @@ namespace PSV.Installer
         /// installs the metadata package if absent, otherwise re-checks the registry for a newer
         /// catalog. Bypasses the once-per-session throttles because the user explicitly asked.
         /// </summary>
+        /// <summary>
+        /// Marks the once-per-session metadata update-probe as done, WITHOUT probing. Called right
+        /// after a fresh git metadata install so <see cref="MaybeAutoUpdate"/> doesn't immediately
+        /// re-resolve the same git URL on the post-install reload — that redundant Client.Add queues
+        /// an extra domain reload that can tear down the just-auto-opened wizard.
+        /// </summary>
+        internal static void SuppressMetadataUpdateThisSession() =>
+            SessionState.SetBool(UpdateProbedKey, true);
+
         internal static void EnsureMetadata()
         {
             if (Application.isBatchMode) return;

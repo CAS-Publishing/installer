@@ -190,6 +190,18 @@ namespace PSV.Installer.Wizard
                 _tabSetup.style.display = AnyComponentInstalled() ? DisplayStyle.Flex : DisplayStyle.None;
 
             _router.Preview(ResolveStartScreen());
+
+            // If a recommended-install click armed a resume while the metadata catalog was still
+            // installing, and the catalog is now present, continue that install automatically. The
+            // catalog-Ok check short-circuits ConsumeResume, so the flag is preserved (not burned)
+            // when the catalog still isn't ready — a later open retries. Deferred to delayCall so the
+            // confirm modal doesn't run mid-CreateGUI.
+            if (PSV.Installer.Catalog.CatalogLoader.Load().Status == PSV.Installer.Catalog.CatalogLoadStatus.Ok
+                && AutoInstaller.ConsumeResume())
+            {
+                var router = _router;
+                EditorApplication.delayCall += () => { if (router != null) AutoInstaller.StartAll(router); };
+            }
         }
 
         private static bool AnyComponentInstalled()
