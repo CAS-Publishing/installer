@@ -33,7 +33,7 @@ namespace PSV.Installer.Wizard
     }
 
     /// <summary>
-    /// Reads the default client component set (CAS SDK, Tenjin, Firebase Analytics) from the
+    /// Reads the default client component set (CAS SDK, Tenjin, Firebase Analytics, EDM4U) from the
     /// live catalog + project scan. Read-only: no project mutation. Reuses the existing
     /// <see cref="CatalogLoader"/> / <see cref="ProjectScanner"/> backend.
     ///
@@ -50,6 +50,7 @@ namespace PSV.Installer.Wizard
             ("com.cleversolutions.ads.unity", "CAS SDK",            "Ads / Mediation", "cas"),
             ("com.tenjin.sdk",                "Tenjin SDK",         "Attribution",     "tenjin"),
             ("com.google.firebase.analytics", "Firebase Analytics", "Analytics",       "firebase"),
+            ("com.google.external-dependency-manager", "External Dependency Manager (EDM4U)", "Android/iOS dependency resolver", "edm"),
         };
 
         /// <summary>Package ids of the default component set, in display order.</summary>
@@ -83,13 +84,56 @@ namespace PSV.Installer.Wizard
         private static bool _cachedOk;
         private static bool _hasCache;
 
-        /// <summary>Drops the cached scan so the next <see cref="TryGetStatuses"/> re-scans. Call after
-        /// an explicit user Refresh. (Static caches also reset on domain reload after installs.)</summary>
+        // Same session-cache treatment for the "Additional components" set (see TryGetAdditionalStatuses).
+        private static List<ComponentStatus> _cachedAdditional;
+        private static string _cachedAdditionalError;
+        private static bool _cachedAdditionalOk;
+        private static bool _hasAdditionalCache;
+
+        // Shared raw scan, cached separately from the two view-level caches above so BuildStatuses
+        // and BuildAdditionalStatuses — both cold on the same Refresh — run ProjectScanner.Scan
+        // (reflection over loaded assemblies + disk probes) exactly ONCE between them, not twice.
+        // Keyed by catalog identity: the catalog can be reloaded independently (e.g. by
+        // CatalogLoader.InvalidateCache), so we guard the cache against stale scans computed
+        // against an old catalog object.
+        private static ScanReport _cachedScan;
+        private static PackageCatalog _cachedScanCatalog;
+        private static bool _hasScanCache;
+
+        /// <summary>Drops the cached scan so the next <see cref="TryGetStatuses"/>/
+        /// <see cref="TryGetAdditionalStatuses"/> re-scans. Call after an explicit user Refresh.
+        /// (Static caches also reset on domain reload after installs.)</summary>
         public static void InvalidateCache()
         {
             _hasCache = false;
             _cachedStatuses = null;
             _cachedError = null;
+
+            _hasAdditionalCache = false;
+            _cachedAdditional = null;
+            _cachedAdditionalError = null;
+
+            _hasScanCache = false;
+            _cachedScan = null;
+            _cachedScanCatalog = null;
+        }
+
+        /// <summary>Runs (or reuses) the one project scan a cold render needs. Not part of the
+        /// public API — <see cref="BuildStatuses"/> and <see cref="BuildAdditionalStatuses"/> are
+        /// the only callers, and both are only reached once each per <see cref="InvalidateCache"/>
+        /// window (the outer <c>_hasCache</c>/<c>_hasAdditionalCache</c> checks already skip a
+        /// re-scan on every call after the first), so this is a plain lazy cache keyed by catalog identity.</summary>
+        private static ScanReport GetScan(PackageCatalog catalog)
+        {
+            // Cache is valid only when both _hasScanCache is set AND the catalog object is the same
+            // (by reference). This guards against stale scans when the catalog is reloaded independently.
+            if (!_hasScanCache || !ReferenceEquals(_cachedScanCatalog, catalog))
+            {
+                _cachedScan = ProjectScanner.Scan(catalog);
+                _cachedScanCatalog = catalog;
+                _hasScanCache = true;
+            }
+            return _cachedScan;
         }
 
         /// <summary>
@@ -127,7 +171,7 @@ namespace PSV.Installer.Wizard
                 return false;
             }
 
-            var report = ProjectScanner.Scan(load.Catalog);
+            var report = GetScan(load.Catalog);
 
             var pkgById = new Dictionary<string, PackageScanResult>();
             if (report.Packages != null)
@@ -150,6 +194,132 @@ namespace PSV.Installer.Wizard
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Returns one <see cref="ComponentStatus"/> per catalog entry that is NOT part of the
+        /// default set (see <see cref="DefaultIds"/>) and is not the installer's own package(s)
+        /// (<c>com.psvgamestudio.installer*</c> — the hub and its metadata catalog aren't
+        /// user-facing "components"). Cached for the session like <see cref="TryGetStatuses"/>; see
+        /// <see cref="InvalidateCache"/>. The returned list is shared — treat it as read-only.
+        /// </summary>
+        public static bool TryGetAdditionalStatuses(out List<ComponentStatus> statuses, out string error)
+        {
+            if (_hasAdditionalCache)
+            {
+                statuses = _cachedAdditional;
+                error = _cachedAdditionalError;
+                return _cachedAdditionalOk;
+            }
+
+            _cachedAdditionalOk = BuildAdditionalStatuses(out _cachedAdditional, out _cachedAdditionalError);
+            _hasAdditionalCache = true;
+            statuses = _cachedAdditional;
+            error = _cachedAdditionalError;
+            return _cachedAdditionalOk;
+        }
+
+        private static bool BuildAdditionalStatuses(out List<ComponentStatus> statuses, out string error)
+        {
+            statuses = new List<ComponentStatus>();
+            error = null;
+
+            var load = CatalogLoader.Load();
+            if (load.Status != CatalogLoadStatus.Ok)
+            {
+                error = load.Status == CatalogLoadStatus.NotInstalled
+                    ? "Catalog metadata package is not installed yet — live component status is unavailable."
+                    : $"Catalog could not be read: {load.Error}";
+                return false;
+            }
+
+            var report = GetScan(load.Catalog);
+
+            var pkgById = new Dictionary<string, PackageScanResult>();
+            if (report.Packages != null)
+                foreach (var p in report.Packages)
+                    if (p != null) pkgById[p.Id] = p;
+
+            var extById = new Dictionary<string, ExternalScanResult>();
+            if (report.External != null)
+                foreach (var e in report.External)
+                    if (e != null) extById[e.Id] = e;
+
+            // Category id → human display name, so the Sub line reads like the defaults' hand-written
+            // one ("Ads / Mediation") instead of a raw catalog category id ("ads").
+            var categoryNames = new Dictionary<string, string>();
+            if (load.Catalog.Categories != null)
+                foreach (var cat in load.Catalog.Categories)
+                    if (cat != null && !string.IsNullOrEmpty(cat.Id))
+                        categoryNames[cat.Id] = cat.DisplayName;
+
+            var defaultIds = new HashSet<string>(DefaultIds);
+            // First-wins dedup: an id could in principle appear in both catalog.Packages and
+            // catalog.External (catalog authoring mistake) — never list it twice.
+            var seenIds = new HashSet<string>();
+
+            if (load.Catalog.Packages != null)
+                foreach (var rec in load.Catalog.Packages)
+                {
+                    if (rec == null || string.IsNullOrEmpty(rec.Id)) continue;
+                    if (defaultIds.Contains(rec.Id) || IsOwnPackage(rec.Id)) continue;
+                    if (!seenIds.Add(rec.Id)) continue;
+                    var d = ToDescriptor(rec.Id, rec.DisplayName, rec.Category, categoryNames);
+                    statuses.Add(pkgById.TryGetValue(rec.Id, out var p) ? FromPackage(d, p) : NotInCatalog(d));
+                }
+
+            if (load.Catalog.External != null)
+                foreach (var rec in load.Catalog.External)
+                {
+                    if (rec == null || string.IsNullOrEmpty(rec.Id)) continue;
+                    if (defaultIds.Contains(rec.Id) || IsOwnPackage(rec.Id)) continue;
+                    if (!seenIds.Add(rec.Id)) continue;
+                    var d = ToDescriptor(rec.Id, rec.DisplayName, rec.Category, categoryNames);
+                    statuses.Add(extById.TryGetValue(rec.Id, out var e) ? FromExternal(d, e) : NotInCatalog(d));
+                }
+
+            return true;
+        }
+
+        /// <summary>The installer's own packages (hub + metadata catalog) aren't user-facing
+        /// "components" — never list them under Additional components.</summary>
+        private static bool IsOwnPackage(string id) =>
+            id.StartsWith("com.psvgamestudio.installer", System.StringComparison.Ordinal);
+
+        private static (string Id, string Name, string Sub, string Logo) ToDescriptor(
+            string id, string displayName, string category, Dictionary<string, string> categoryNames)
+        {
+            var name = string.IsNullOrEmpty(displayName) ? id : displayName;
+            var sub = string.Empty;
+            if (!string.IsNullOrEmpty(category))
+                sub = categoryNames.TryGetValue(category, out var catName) && !string.IsNullOrEmpty(catName)
+                    ? catName
+                    : category;
+            return (id, name, sub, "generic"); // no per-package logo data in the catalog — generic icon
+        }
+
+        /// <summary>
+        /// Best-effort "recommended" (falling back to "min") version for <paramref name="id"/> from
+        /// the live catalog — used only to render the Update-row hint ("to v&lt;version&gt;"). Returns
+        /// null when the catalog is unavailable or <paramref name="id"/> isn't a catalog entry, which
+        /// simply hides the hint (no hard failure for a cosmetic detail).
+        /// </summary>
+        public static string ResolveRecommendedVersion(string id)
+        {
+            var load = CatalogLoader.Load();
+            if (load.Status != CatalogLoadStatus.Ok || load.Catalog == null) return null;
+
+            if (load.Catalog.Packages != null)
+                foreach (var p in load.Catalog.Packages)
+                    if (p != null && p.Id == id)
+                        return !string.IsNullOrEmpty(p.RecommendedVersion) ? p.RecommendedVersion : p.MinVersion;
+
+            if (load.Catalog.External != null)
+                foreach (var e in load.Catalog.External)
+                    if (e != null && e.Id == id)
+                        return !string.IsNullOrEmpty(e.RecommendedVersion) ? e.RecommendedVersion : e.MinVersion;
+
+            return null;
         }
 
         private static ComponentStatus Base(in (string Id, string Name, string Sub, string Logo) d) =>

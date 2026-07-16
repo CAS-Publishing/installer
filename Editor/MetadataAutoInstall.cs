@@ -11,7 +11,7 @@ namespace PSV.Installer
 {
     internal static class MetadataAutoInstall
     {
-        private const string LogPrefix = "[PSV Installer]";
+        private const string LogPrefix = "[CAS Hub]";
         private const string PsvRegistryName = "PSV Game Studio";
         private const string PsvRegistryUrl = CatalogUpdater.PsvRegistryRoot;
         private const string RequiredScope = "com.psvgamestudio";

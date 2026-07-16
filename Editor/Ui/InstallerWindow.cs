@@ -34,7 +34,7 @@ namespace PSV.Installer.Ui
     public sealed class InstallerWindow : EditorWindow
     {
         // ── Window title & minimum size ───────────────────────────────────────
-        private const string WindowTitle = "PSV Installer";
+        private const string WindowTitle = "CAS.AI Publishing Hub";
         private static readonly Vector2 MinSize = new Vector2(640, 400);
 
         // ── In-memory state ───────────────────────────────────────────────────
@@ -79,7 +79,7 @@ namespace PSV.Installer.Ui
 
         /// <summary>
         /// Opens or focuses the legacy IMGUI installer window. No longer in the menu — the
-        /// UI-Toolkit Wizard (PSV Game Studio/Wizard) is the product UI; kept as a fallback.
+        /// UI-Toolkit Wizard (Assets/CleverAdsSolutions/Hub) is the product UI; kept as a fallback.
         /// </summary>
         public static void Open()
         {
@@ -276,7 +276,7 @@ namespace PSV.Installer.Ui
 
         private void OnRefreshCatalog()
         {
-            const string logPrefix = "[PSV Installer]";
+            const string logPrefix = "[CAS Hub]";
 
             CatalogUpdater.CheckRemoteLatestVersion(
                 onSuccess: latest =>
@@ -315,24 +315,24 @@ namespace PSV.Installer.Ui
 
             if (_catalog == null)
             {
-                EditorUtility.DisplayDialog("PSV Installer",
+                EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                     "Cannot apply: catalog is not loaded. Run a scan first.", "OK");
                 return;
             }
 
             if (_report == null)
             {
-                EditorUtility.DisplayDialog("PSV Installer",
+                EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                     "Cannot apply: no scan report. Run a scan first.", "OK");
                 return;
             }
 
             var selectionAdapter = new HashSetSelectionAdapter(_selected, _targets);
-            var plan = MigrationPlanner.Plan(_catalog, _report, selectionAdapter, InstallMethodState.Get(), out var warnings);
+            var plan = MigrationPlanner.Plan(_catalog, _report, selectionAdapter, InstallMethod.Upm, out var warnings);
 
             if (plan.Count == 0)
             {
-                EditorUtility.DisplayDialog("PSV Installer",
+                EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                     "Nothing to apply. Select one or more items that need action.", "OK");
                 return;
             }
@@ -344,7 +344,7 @@ namespace PSV.Installer.Ui
 
                 var splitMsg = BuildPartialSplitMessage(psw);
                 var continueAnyway = EditorUtility.DisplayDialog(
-                    "PSV Installer — Partial Split Migration",
+                    "CAS.AI Publishing Hub — Partial Split Migration",
                     splitMsg,
                     "Continue anyway",
                     "Cancel");
@@ -354,7 +354,7 @@ namespace PSV.Installer.Ui
 
             var summary = BuildPlanSummary(plan, warnings, selectionAdapter);
             var confirmed = EditorUtility.DisplayDialog(
-                "PSV Installer — Confirm Apply",
+                "CAS.AI Publishing Hub — Confirm Apply",
                 summary,
                 "Apply", "Cancel");
 
@@ -392,7 +392,7 @@ namespace PSV.Installer.Ui
             EnsureCatalog();
             if (_catalog == null)
             {
-                Debug.LogWarning("[PSV Installer] Cannot run scan: catalog not available.");
+                Debug.LogWarning("[CAS Hub] Cannot run scan: catalog not available.");
                 return;
             }
 

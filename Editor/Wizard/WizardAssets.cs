@@ -43,7 +43,7 @@ namespace PSV.Installer.Wizard
             if (tree != null)
                 tree.CloneTree(target);
             else
-                UnityEngine.Debug.LogError($"[PSV Installer Wizard] Missing UXML asset: {treeName}.uxml");
+                UnityEngine.Debug.LogError($"[CAS Hub] Missing UXML asset: {treeName}.uxml");
         }
     }
 }

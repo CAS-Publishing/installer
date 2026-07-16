@@ -282,7 +282,7 @@ namespace PSV.Installer.Scanner
             foreach (var pat in patterns)
             {
                 if (IsSafePluginPattern(pat)) safe.Add(pat);
-                else Debug.LogWarning("[PSV Installer] Ignoring over-broad pluginFiles pattern '" + pat +
+                else Debug.LogWarning("[CAS Hub] Ignoring over-broad pluginFiles pattern '" + pat +
                                       "' — use an exact file name or a wildcard with a >=5-char prefix.");
             }
             if (safe.Count == 0) return hits;

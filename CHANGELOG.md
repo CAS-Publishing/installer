@@ -2,6 +2,43 @@
 
 All notable changes to this package will be documented in this file.
 
+## [0.0.1-preview.37] - 2026-07-16
+
+- **Rebranded to CAS.AI Publishing Hub.** Window title, dialogs, and log prefix now use the
+  CAS.AI brand; the menu moved from `PSV Game Studio` to `Assets → CleverAdsSolutions → Hub`.
+- **New 3-step intro flow: Install → Configure → Done.** A stepper header guides you through
+  initial setup. The Welcome CAS-ID entry and Auto/Manual integration picker are gone. Ready to
+  install shows the four default components (CAS SDK, Tenjin SDK, Firebase Analytics, EDM4U)
+  with already-installed detection; the primary button becomes **Continue** when everything is
+  present.
+- **The installer no longer configures CAS (BREAKING).** All CAS configuration (CAS ID,
+  audience, ad formats, mediation) lives in the native CAS.AI Settings window; the Configure
+  step is a read-only per-platform detection table (CAS ID / Tenjin key / google-services.json)
+  with quick-open buttons and a "one platform is enough" Continue gate.
+- **Tenjin key feature-detect.** When the installed CAS plugin exposes a Tenjin SDK Key field,
+  it is detected and gated as a configuration requirement; otherwise shown as "handled on our end"
+  without blocking Continue.
+- **Install progress: per-step failure panel.** Failed steps show **Retry step** and **Copy log**
+  actions, with a cancel button that takes you back to the start; the inline "Installation
+  complete" state is resilient to domain reloads.
+- **Components tab → Main Components table.** Replaced the old list with SDK / Version / Status /
+  Action / Remove columns, using PDF terminology (Up to date / Update required / Manual install /
+  Connect to Hub). A separate Additional components section shows catalog entries beyond the
+  defaults.
+- **Setup complete screen.** A live checklist (CAS / Tenjin / Firebase) confirms what you've
+  installed, with next steps: add ad placements, open the CAS dashboard, or re-open the Hub
+  anytime from the menu.
+
+## [0.0.1-preview.36] - 2026-07-07
+
+- **UPM is the only install method.** The UPM / Git selector is gone from Welcome; every install
+  path now plans with the UPM scoped registry. The planner's git capability remains (a git-installed
+  project can still be switched to UPM from Components).
+- **CAS mediation is an exclusive Optimal / Children Ads choice** instead of two independent
+  checkboxes. Picking a side activates that solution, disables the other, and writes the matching
+  `audienceTagged` (Optimal → NotChildren, Children Ads → Children). When both sets are installed
+  (legacy state), the stored audience decides which side shows selected.
+
 ## [0.0.1-preview.35] - 2026-07-01
 
 Release candidate — hardening from a fresh git-URL field test on Unity 6000.3, plus signed Firebase.

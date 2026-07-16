@@ -89,19 +89,19 @@ namespace PSV.Installer.Wizard
                     }
                     else
                     {
-                        Debug.LogWarning($"[PSV Installer] No Editor default found for '{file}' (looked under " +
+                        Debug.LogWarning($"[CAS Hub] No Editor default found for '{file}' (looked under " +
                             $"{AndroidPlayerDir}). Skipped — enable it manually in Player Settings if your build needs it.");
                     }
                 }
                 catch (System.Exception e)
                 {
-                    Debug.LogWarning($"[PSV Installer] Couldn't create '{file}': {e.Message}");
+                    Debug.LogWarning($"[CAS Hub] Couldn't create '{file}': {e.Message}");
                 }
             }
             if (created > 0)
             {
                 AssetDatabase.Refresh();
-                Debug.Log($"[PSV Installer] Enabled {created} Android build template(s) under Assets/Plugins/Android.");
+                Debug.Log($"[CAS Hub] Enabled {created} Android build template(s) under Assets/Plugins/Android.");
             }
             return created;
         }

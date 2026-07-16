@@ -20,31 +20,27 @@ namespace PSV.Installer.Wizard
         private static readonly Vector2 MinSize     = new Vector2(440, 560);
         private static readonly Vector2 MaxSize     = new Vector2(4000, 4000);
 
-        // Order is the wizard order; element [0] is the entry screen.
+        // Order is the wizard order; element [0] is the entry screen. The 3-step intro flow is
+        // ready → progress → configure → done; components/about are post-intro tabs.
         private static readonly string[] ScreenOrder =
-            { "welcome", "integration", "components", "hub", "progress", "done", "settings", "setup", "about" };
+            { "ready", "progress", "configure", "done", "components", "about" };
 
         // Persists the current screen across domain reloads (e.g. the reload UPM triggers after
-        // an install) so the wizard returns to where the user was instead of jumping to Welcome.
+        // an install) so the wizard returns to where the user was instead of jumping back to Ready.
         // SessionState survives reloads and resets on editor restart.
         private const string CurrentScreenKey = "PSV.Installer.Wizard.CurrentScreen";
 
-        // Set by OpenAtWelcome so the Welcome screen preselects a specific platform on a build-target
-        // switch even when the window was already open (its WelcomeScreen kept its construction-time
-        // platform). One-shot, consumed in WelcomeScreen.OnEnter.
-        private const string RequestPlatformKey = "PSV.Installer.Wizard.RequestPlatform";
-
         // Screens that appear as top tabs; everything else is a full-screen flow state.
-        // Welcome + Integration are first-run-only flow screens — once set up, the user never
+        // Ready/Progress/Done are first-run-only flow screens — once set up, the user never
         // returns to the install picker, so they are NOT tabs.
-        private static readonly string[] TabScreens = { "components", "setup", "about" };
+        private static readonly string[] TabScreens = { "components", "configure", "about" };
 
         // Per-project key — EditorPrefs is machine-global, so include the project path to keep
         // the intro flag scoped to THIS project (each client project is first-run on its own).
         private static string IntroDoneKey => "PSV.Installer.Wizard.IntroDone:" + Application.dataPath;
 
-        /// <summary>True once the user has passed the first-run intro (Integration), per project,
-        /// so later opens land on the tabs instead of Welcome.</summary>
+        /// <summary>True once the user has passed the first-run intro (Ready → Progress → Configure
+        /// → Done), per project, so later opens land on the tabs instead of Ready.</summary>
         internal static bool IntroDone
         {
             get => EditorPrefs.GetBool(IntroDoneKey, false);
@@ -54,14 +50,19 @@ namespace PSV.Installer.Wizard
         private WizardRouter _router;
         private VisualElement _tabBar;
         private Button _tabComponents;
-        private Button _tabSetup;
+        private Button _tabConfigure;
         private Button _tabAbout;
         private VisualElement _aboutBadge;
 
-        [MenuItem("PSV Game Studio/Wizard")]
+        private VisualElement _stepper;
+        private Label _step1;
+        private Label _step2;
+        private Label _step3;
+
+        [MenuItem("Assets/CleverAdsSolutions/Hub")]
         public static void Open()
         {
-            var window = GetWindow<InstallerWizardWindow>(true, "CAS Hub Installer", true);
+            var window = GetWindow<InstallerWizardWindow>(true, "CAS.AI Publishing Hub", true);
             window.minSize = MinSize;
             window.maxSize = MaxSize;
 
@@ -75,55 +76,50 @@ namespace PSV.Installer.Wizard
         }
 
         /// <summary>
-        /// Reopens the wizard at the first-run Welcome screen, clearing the per-project intro flag.
-        /// Welcome/Integration are not tabs (you don't normally return to the install picker), so
-        /// this is the way back to redo setup — and how to reach Welcome in a project that already
-        /// passed the intro.
+        /// Reopens the wizard at the first-run Ready screen, clearing the per-project intro flag.
+        /// Ready/Progress are not tabs (you don't normally return to the install picker), so this
+        /// is the way back to redo setup from scratch.
         /// </summary>
-        [MenuItem("PSV Game Studio/Wizard (Restart Intro)")]
+        [MenuItem("Assets/CleverAdsSolutions/Hub (Restart Intro)")]
         public static void OpenFirstRun()
         {
             IntroDone = false;
-            SessionState.SetString(CurrentScreenKey, "welcome"); // don't restore a previous tab
+            SessionState.SetString(CurrentScreenKey, "ready"); // don't restore a previous tab
             Open();
             if (HasOpenInstances<InstallerWizardWindow>())
-                GetWindow<InstallerWizardWindow>()._router?.GoTo("welcome");
+                GetWindow<InstallerWizardWindow>()._router?.GoTo("ready");
         }
 
         /// <summary>
-        /// Opens the wizard at Welcome with <paramref name="platform"/> preselected (the build-target
-        /// watcher uses this). Does NOT clear <see cref="IntroDone"/> — it is a targeted "configure
-        /// this platform" prompt, not a first-run reset.
+        /// Opens the wizard on the Configuration screen (the build-target watcher uses this when CAS
+        /// is installed but the newly active platform's CAS id isn't configured yet). Does NOT clear
+        /// <see cref="IntroDone"/> — it is a targeted "configure this platform" prompt, not a first-run
+        /// reset. Unlike the old Welcome-preselect flow, no platform id needs to be threaded through —
+        /// the Configuration screen re-scans and shows per-platform status itself on every OnEnter.
         /// </summary>
-        public static void OpenAtWelcome(string platform)
+        public static void OpenAtConfigure()
         {
-            // Already open ON Welcome: the user is actively configuring a platform — a build-target
-            // switch must not reopen/reseed and discard the id they're mid-typing. Leave them be; they
-            // can switch the platform tab by hand. (HasOpenInstances first, so GetWindow never creates.)
+            // Already open ON Configure: a build-target switch must not re-enter and force a redundant
+            // OnEnter/rescan on a screen the user is already looking at (WizardRouter.Show always
+            // re-invokes OnEnter, even for the current screen). Leave them be — the Configure screen
+            // rescans on its own Refresh/OnEnter cadence anyway. (HasOpenInstances first, so
+            // GetWindow never creates a window just to check.)
             if (HasOpenInstances<InstallerWizardWindow>() &&
-                GetWindow<InstallerWizardWindow>()._router?.Current == "welcome")
+                GetWindow<InstallerWizardWindow>()._router?.Current == "configure")
                 return;
 
-            SessionState.SetString(RequestPlatformKey, platform ?? string.Empty);
-            SessionState.SetString(CurrentScreenKey, "welcome");
+            SessionState.SetString(CurrentScreenKey, "configure");
             Open();
-            // A fresh Open() already previewed Welcome (ResolveStartScreen → welcome) and consumed the
-            // request, so only navigate an already-open window that's on a DIFFERENT screen — this
-            // avoids re-entering Welcome (a double OnEnter, two redundant catalog reads) on a new window.
+            // A fresh Open() already previewed Configure (ResolveStartScreen → "configure", since we
+            // just set CurrentScreenKey) and ran OnEnter once — only navigate an ALREADY-open window
+            // that's on a DIFFERENT screen, so a brand-new window never gets a redundant double
+            // OnEnter/rescan.
             if (HasOpenInstances<InstallerWizardWindow>())
             {
                 var router = GetWindow<InstallerWizardWindow>()._router;
-                if (router != null && router.Current != "welcome")
-                    router.GoTo("welcome");
+                if (router != null && router.Current != "configure")
+                    router.GoTo("configure");
             }
-        }
-
-        /// <summary>Returns and clears the platform requested by <see cref="OpenAtWelcome"/> (one-shot).</summary>
-        internal static string ConsumeRequestedPlatform()
-        {
-            var p = SessionState.GetString(RequestPlatformKey, string.Empty);
-            if (!string.IsNullOrEmpty(p)) SessionState.EraseString(RequestPlatformKey);
-            return p;
         }
 
         /// <summary>Closes the window if open — used by the All Done screen's Close button.</summary>
@@ -167,7 +163,6 @@ namespace PSV.Installer.Wizard
             // if missing) and current (check the registry for a newer one). Async — never blocks the
             // window, and works regardless of whether the auto-open path ran.
             PSV.Installer.Bootstrap.EnsureMetadata();
-            CasIdApplier.ApplyPending();
 
             var root = rootVisualElement;
 
@@ -184,10 +179,10 @@ namespace PSV.Installer.Wizard
             BuildTabBar(root);
             RefreshUpdateBadge();
 
-            // The Setup tab only makes sense once something is installed (you configure installed
-            // packages). Recomputed each time the window is built — installs trigger a reload.
-            if (_tabSetup != null)
-                _tabSetup.style.display = AnyComponentInstalled() ? DisplayStyle.Flex : DisplayStyle.None;
+            // The Configuration tab only makes sense once something is installed (you configure
+            // installed packages). Recomputed each time the window is built — installs trigger a reload.
+            if (_tabConfigure != null)
+                _tabConfigure.style.display = AnyComponentInstalled() ? DisplayStyle.Flex : DisplayStyle.None;
 
             _router.Preview(ResolveStartScreen());
 
@@ -216,20 +211,27 @@ namespace PSV.Installer.Wizard
         {
             // Mid-session restore (e.g. after the install-triggered domain reload).
             var saved = SessionState.GetString(CurrentScreenKey, "");
+            return ResolveStartScreenPure(saved, IntroDone);
+        }
+
+        /// <summary>
+        /// Pure decision logic for <see cref="ResolveStartScreen"/> — no SessionState/EditorPrefs
+        /// reads, so it's directly testable. <paramref name="saved"/> is valid (present in
+        /// <see cref="ScreenOrder"/>) → restore it, EXCEPT once past the intro a saved "ready" is
+        /// redirected to "components" (past the intro you don't return to the install picker).
+        /// Invalid/empty/stale ids (e.g. "welcome"/"integration" from a pre-Task-5 session, no longer
+        /// in ScreenOrder) fall through to the fresh-open rule: first run shows Ready, afterwards
+        /// lands on the Components tab.
+        /// </summary>
+        internal static string ResolveStartScreenPure(string saved, bool introDone)
+        {
             if (!string.IsNullOrEmpty(saved) && Array.IndexOf(ScreenOrder, saved) >= 0)
             {
-                // Past the intro, don't RESTORE a first-run-only flow screen (welcome/integration) —
-                // those have no tab bar. Exception: a build-target-switch prompt that explicitly
-                // requested Welcome (RequestPlatform still pending). Otherwise a window closed on
-                // Welcome would reopen tab-less instead of on the Components tab.
-                var welcomeRequested = !string.IsNullOrEmpty(SessionState.GetString(RequestPlatformKey, ""));
-                if (IntroDone && !welcomeRequested && (saved == "welcome" || saved == "integration"))
-                    return "components";
+                if (introDone && saved == "ready") return "components";
                 return saved;
             }
 
-            // Fresh open: first run shows the intro; afterwards land on the Components tab.
-            return IntroDone ? "components" : "welcome";
+            return introDone ? "components" : "ready";
         }
 
         private static void ApplyFont(VisualElement root)
@@ -243,14 +245,14 @@ namespace PSV.Installer.Wizard
 
         private void RegisterScreens(WizardRouter router)
         {
-            router.Register(new WelcomeScreen());
-            router.Register(new IntegrationModeScreen());
+            // Welcome/Integration/HubActions/SettingsRedirect were removed (Task 9) — the 3-step intro
+            // flow (Ready → Progress → Configure → Done) replaces them; CAS ID/audience/ad-format
+            // configuration now lives entirely in CAS.AI's own settings window.
+            router.Register(new ReadyScreen());
             router.Register(new ComponentsScreen());
-            router.Register(new HubActionsScreen());
             router.Register(new ProgressScreen());
             router.Register(new DoneScreen());
-            router.Register(new SettingsRedirectScreen());
-            router.Register(new SetupScreen());
+            router.Register(new ConfigureScreen());
             router.Register(new AboutScreen());
         }
 
@@ -264,11 +266,16 @@ namespace PSV.Installer.Wizard
         {
             _tabBar        = root.Q<VisualElement>("cas-tabbar");
             _tabComponents = root.Q<Button>("tab-components");
-            _tabSetup      = root.Q<Button>("tab-setup");
+            _tabConfigure  = root.Q<Button>("tab-configure");
             _tabAbout      = root.Q<Button>("tab-about");
 
+            _stepper = root.Q<VisualElement>("cas-stepper");
+            _step1   = root.Q<Label>("step-install");
+            _step2   = root.Q<Label>("step-configure");
+            _step3   = root.Q<Label>("step-done");
+
             if (_tabComponents != null) _tabComponents.clicked += () => _router.GoTo("components");
-            if (_tabSetup != null)      _tabSetup.clicked      += () => _router.GoTo("setup");
+            if (_tabConfigure != null)  _tabConfigure.clicked  += () => _router.GoTo("configure");
             if (_tabAbout != null)      _tabAbout.clicked      += () => _router.GoTo("about");
 
             if (_tabAbout != null)
@@ -288,16 +295,26 @@ namespace PSV.Installer.Wizard
             }
         }
 
-        // Show the tab bar only on tab screens; flow screens (Progress/Done/Hub/Settings) are
-        // full-screen. Highlights the active tab.
+        // Shows the stepper header while still inside the pre-intro 3-step flow (Ready/Progress/
+        // Configure/Done, before IntroDone flips) and the tab bar otherwise. "configure" is
+        // shared between step 2 of the flow and the post-intro Configuration tab — IntroDone (not
+        // the id alone) decides which header applies, so re-entering the Configure tab after the intro
+        // shows tabs like Components/About do, not a step-2-of-3 stepper.
         private void UpdateTabBar(string id)
         {
-            var isTab = Array.IndexOf(TabScreens, id) >= 0;
+            var step = WizardStepper.StepFor(id);
+            var showStepper = step.HasValue && !IntroDone;
+            var isTab = !showStepper && Array.IndexOf(TabScreens, id) >= 0;
+
             if (_tabBar != null)
                 _tabBar.style.display = isTab ? DisplayStyle.Flex : DisplayStyle.None;
+            if (_stepper != null)
+                _stepper.style.display = showStepper ? DisplayStyle.Flex : DisplayStyle.None;
+
+            if (showStepper) UpdateStepper(step.Value);
 
             SetTabActive(_tabComponents, id == "components");
-            SetTabActive(_tabSetup, id == "setup");
+            SetTabActive(_tabConfigure, id == "configure");
             SetTabActive(_tabAbout, id == "about");
         }
 
@@ -306,6 +323,34 @@ namespace PSV.Installer.Wizard
             if (tab == null) return;
             if (active) tab.AddToClassList("cas-tab--active");
             else        tab.RemoveFromClassList("cas-tab--active");
+        }
+
+        private void UpdateStepper(int currentStep)
+        {
+            SetStep(_step1, "Install", 1, currentStep);
+            SetStep(_step2, "Configure", 2, currentStep);
+            SetStep(_step3, "Done", 3, currentStep);
+        }
+
+        // Pending: "N Label" in muted grey. Active (currentStep == index): "N Label" in accent blue.
+        // Passed (currentStep > index): "✓ Label" in green.
+        private static void SetStep(Label label, string name, int index, int currentStep)
+        {
+            if (label == null) return;
+
+            label.RemoveFromClassList("cas-introstep--active");
+            label.RemoveFromClassList("cas-introstep--done");
+
+            if (currentStep > index)
+            {
+                label.text = "✓ " + name;
+                label.AddToClassList("cas-introstep--done");
+            }
+            else
+            {
+                label.text = index + " " + name;
+                if (currentStep == index) label.AddToClassList("cas-introstep--active");
+            }
         }
 
         // Shows a dot on the About tab when a newer installer version is published. Probes the

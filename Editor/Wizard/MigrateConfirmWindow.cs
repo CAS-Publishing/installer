@@ -32,7 +32,7 @@ namespace PSV.Installer.Wizard
             w._deletes     = deletes  ?? new List<string>();
             w._shared      = shared   ?? new List<string>();
             w._result      = false;
-            w.titleContent = new GUIContent("PSV Installer");
+            w.titleContent = new GUIContent("CAS.AI Publishing Hub");
             w.minSize = new Vector2(460, 320);
             w.maxSize = new Vector2(620, 760);
             w.ShowModalUtility(); // blocks until Close()

@@ -133,9 +133,9 @@ The window is a tabbed wizard:
 
 | Tab | What it does |
 |---|---|
-| **Welcome** | First-run setup. Pick your **install method** (UPM scoped registry or Git URL) and enter the **CAS App ID** for the platform you're configuring — it defaults to the active build target (Android / iOS) and is switchable. The value is validated per platform (Android = bundle id, iOS = numeric) and written into the CAS settings once CAS is installed. |
+| **Welcome** | First-run setup. Enter the **CAS App ID** for the platform you're configuring — it defaults to the active build target (Android / iOS) and is switchable. The value is validated per platform (Android = bundle id, iOS = numeric) and written into the CAS settings once CAS is installed. Components are always installed via the **UPM scoped registry**. |
 | **Components** | The live catalog of PSV / CAS packages with per-row state (installed / update available / needs migration / installed via git). Install, update, migrate a legacy/manual copy to UPM, switch a git install to the registry, or refresh. |
-| **Configuration** | Per-platform readiness for the components you've installed, **scoped to the active build target**. Each cell opens that platform's settings. For CAS it also offers the **ad formats** (Banner / Interstitial / Rewarded / App Open), the **audience**, and the **Optimal / Families** mediation network sets — all written straight into the CAS settings asset. |
+| **Configuration** | Per-platform readiness for the components you've installed, **scoped to the active build target**. Each cell opens that platform's settings. For CAS it also offers the **ad formats** (Banner / Interstitial / Rewarded / App Open) and an exclusive **Optimal / Children Ads** mediation choice (which also sets the audience) — all written straight into the CAS settings asset. |
 | **About** | Shows the installed installer version, checks the registry for a newer one, and **self-updates** in place. A red dot on the **About** tab means an update is available (checked once per session). |
 
 ### Updating the installer

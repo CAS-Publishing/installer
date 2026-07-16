@@ -19,7 +19,7 @@ namespace PSV.Installer.Migrator
     /// </summary>
     public sealed class MigrationRunner
     {
-        private const string LogPrefix = "[PSV Installer]";
+        private const string LogPrefix = "[CAS Hub]";
 
         /// <summary>
         /// Marker embedded in a delete failure message when the git recoverability guard blocked the

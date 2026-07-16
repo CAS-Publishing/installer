@@ -1,0 +1,19 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement class="cas-screen">
+        <ui:VisualElement class="cas-body">
+
+            <ui:Label text="Ready to install" class="cas-h2" />
+            <ui:Label text="Prepares your game for publishing by setting up mediation, attribution, and analytics." class="cas-sub" style="margin-bottom: 14px;" />
+
+            <ui:VisualElement name="ready-list" class="cas-table" />
+
+            <ui:Label text="The installer will modify Packages/manifest.json and import required plugins. No scene files will be changed." class="cas-notes" style="margin-top: 12px;" />
+
+        </ui:VisualElement>
+
+        <ui:VisualElement class="cas-footer">
+            <ui:Button name="btn-advanced" text="Advanced integration" class="cas-btn cas-btn--muted cas-btn--sm" />
+            <ui:Button name="btn-primary" text="Install" class="cas-btn cas-btn--primary cas-btn--sm" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

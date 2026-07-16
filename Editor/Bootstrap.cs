@@ -10,7 +10,7 @@ namespace PSV.Installer
     [InitializeOnLoad]
     internal static class Bootstrap
     {
-        private const string LogPrefix = "[PSV Installer]";
+        private const string LogPrefix = "[CAS Hub]";
         private const string UpdateProbedKey = "PSV.Installer.UpdateProbedThisSession";
 
         /// <summary>

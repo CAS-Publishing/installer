@@ -3,7 +3,7 @@
         <ui:VisualElement class="cas-body">
 
             <ui:Label text="About" class="cas-h2" />
-            <ui:Label text="CleverAdsSolutions Hub Installer" class="cas-sub" style="margin-bottom: 14px;" />
+            <ui:Label text="CAS.AI Publishing Hub" class="cas-sub" style="margin-bottom: 14px;" />
 
             <ui:VisualElement class="cas-row" style="align-items: flex-start;">
                 <ui:VisualElement style="flex-grow: 1;">

@@ -1,4 +1,4 @@
-/* CAS Hub Installer — wizard theme.
+/* CAS.AI Publishing Hub — wizard theme.
  * Literal colors (no USS variables, no gradients) for maximum 2022.3 compatibility.
  * Palette from docs/design/chrome.jsx. */
 
@@ -35,6 +35,22 @@
 .cas-tab:hover { color: #E0E0E0; }
 .cas-tab--active { color: #FFFFFF; border-bottom-color: #4C7EFF; }
 
+/* Intro-flow stepper header (Ready/Progress/Setup(configure)/Done), shown instead of the tab bar
+ * while IntroDone is false. Uses .cas-introstep (not .cas-step — that class already styles the
+ * Progress screen's per-package install rows; reusing it here would collide with that layout). */
+.cas-stepper {
+    flex-direction: row;
+    align-items: center;
+    background-color: #2D2D2D;
+    border-bottom-width: 1px;
+    border-bottom-color: #1F1F1F;
+    padding: 10px 16px;
+}
+.cas-introstep { color: #9A9A9A; font-size: 11px; -unity-font-style: bold; white-space: nowrap; }
+.cas-introstep--active { color: #4C7EFF; }
+.cas-introstep--done { color: #4ADE80; }
+.cas-introstep__line { flex-grow: 1; height: 1px; background-color: #3D3D3D; margin-left: 10px; margin-right: 10px; }
+
 .cas-content { flex-grow: 1; }
 
 /* ── Screen scaffold ─────────────────────────────────────────────────────── */
@@ -50,7 +66,6 @@
 }
 
 /* ── Typography ──────────────────────────────────────────────────────────── */
-.cas-h1 { color: #FFFFFF; font-size: 19px; -unity-font-style: bold; -unity-text-align: middle-center; margin-top: 22px; margin-bottom: 6px; }
 .cas-h2 { color: #FFFFFF; font-size: 17px; -unity-font-style: bold; margin: 0; }
 .cas-h2--big { color: #FFFFFF; font-size: 22px; -unity-font-style: bold; margin-top: 22px; margin-bottom: 8px; }
 .cas-sub { color: #8E8E8E; font-size: 12px; white-space: normal; margin-top: 4px; }
@@ -82,65 +97,15 @@
 .cas-btn--warn { background-color: #D8893F; border-color: #8C5A28; color: #FFFFFF; }
 .cas-btn--warn:hover { background-color: #E0954A; }
 .cas-btn--muted { background-color: #454545; border-color: #1F1F1F; color: #C5C5C5; }
+/* Remove SDK — red outline on the base button chrome, not a filled fill (keeps a destructive
+   action visually distinct from the primary/warn action buttons without shouting). */
+.cas-btn--danger { background-color: rgba(0,0,0,0); border-color: #C4443F; color: #E58783; }
+.cas-btn--danger:hover { background-color: rgba(196,68,63,0.12); }
+.cas-btn--danger:disabled { border-color: #3A2A2A; color: #6E5250; }
 .cas-btn--sm { padding-top: 3px; padding-bottom: 3px; padding-left: 14px; padding-right: 14px; font-size: 11px; }
 .cas-btn--block { width: 100%; padding-top: 10px; padding-bottom: 10px; }
 
-/* Platform segments (Welcome): one CAS-ID field whose value is swapped by Android/iOS. */
-.cas-seg { flex-direction: row; }
-.cas-seg__item { margin-right: 6px; opacity: 0.6; }
-.cas-seg__item--active { background-color: #3B6AE0; border-color: #1D3E9A; color: #FFFFFF; opacity: 1; }
-
-/* ── Inputs ──────────────────────────────────────────────────────────────── */
-.cas-input {
-    background-color: #2A2A2A;
-    border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px;
-    border-color: #1D1D1D;
-    border-radius: 3px;
-    margin: 0;
-}
-.cas-input .unity-base-text-field__input {
-    background-color: rgba(0,0,0,0);
-    border-width: 0;
-    border-left-width: 0; border-right-width: 0; border-top-width: 0; border-bottom-width: 0;
-    color: #D5D5D5;
-    font-size: 12px;
-    padding-top: 7px; padding-bottom: 7px; padding-left: 9px; padding-right: 9px;
-}
-
-.cas-input-wrap { position: relative; }
-.cas-input__ph {
-    position: absolute;
-    left: 10px;
-    top: 8px;
-    color: rgba(213, 213, 213, 0.35);
-    font-size: 12px;
-    -unity-font-style: italic;
-}
-
-/* ── Radio / checkbox / glyphs (pure USS) ────────────────────────────────── */
-.cas-radio {
-    width: 14px; height: 14px;
-    border-radius: 7px;
-    background-color: #2A2A2A;
-    border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px;
-    border-color: #5A5A5A;
-    align-items: center; justify-content: center;
-    flex-shrink: 0;
-}
-.cas-radio__dot { width: 6px; height: 6px; border-radius: 3px; background-color: #4C7EFF; display: none; }
-.cas-radio--on { border-color: #4C7EFF; }
-.cas-radio--on .cas-radio__dot { display: flex; }
-
-.cas-chevron {
-    width: 7px; height: 7px;
-    border-right-width: 2px; border-bottom-width: 2px;
-    border-right-color: #7A7A7A; border-bottom-color: #7A7A7A;
-    rotate: -45deg;
-    flex-shrink: 0;
-}
-.cas-chevron--white { border-right-color: #FFFFFF; border-bottom-color: #FFFFFF; }
-.cas-chevron--sm { width: 5px; height: 5px; }
-
+/* ── Checkbox / glyphs (pure USS) ─────────────────────────────────────────── */
 .cas-checkmark { color: #4ADE80; font-size: 14px; -unity-font-style: bold; }
 
 /* ── Status dots ─────────────────────────────────────────────────────────── */
@@ -162,31 +127,9 @@
     padding: 14px;
 }
 .cas-card--green { background-color: rgba(34,160,107,0.14); border-color: #22A06B; }
-.cas-card--blue  { background-color: rgba(76,126,255,0.10); border-color: #4C7EFF; }
-.cas-card__iconbox {
-    width: 54px; height: 54px;
-    border-radius: 8px;
-    background-color: #2A2A2A;
-    border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px;
-    border-color: #3A3A3A;
-    align-items: center; justify-content: center;
-    flex-shrink: 0;
-    margin-right: 14px;
-}
-.cas-card__iconbox--green { background-color: #22A06B; border-color: #22A06B; }
-.cas-card__body { flex-grow: 1; }
+.cas-card--warn  { background-color: rgba(224,160,48,0.14); border-color: #E0A030; }
 .cas-card__title { color: #FFFFFF; -unity-font-style: bold; font-size: 14px; margin-bottom: 4px; }
 .cas-card__desc { color: #A8A8A8; font-size: 11px; white-space: normal; }
-.cas-recommended {
-    align-self: flex-start;
-    margin-top: 8px;
-    background-color: #22A06B;
-    color: #FFFFFF;
-    font-size: 10px;
-    -unity-font-style: bold;
-    padding: 2px 8px;
-    border-radius: 3px;
-}
 
 /* ── Warning / info / tip boxes ──────────────────────────────────────────── */
 .cas-warning {
@@ -211,37 +154,9 @@
     padding: 10px 12px;
 }
 .cas-infobox__text { color: #9CC2FF; font-size: 11px; white-space: normal; flex-grow: 1; margin-left: 8px; }
-.cas-tip {
-    background-color: #2A2A2A;
-    border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px;
-    border-color: #1F1F1F;
-    border-radius: 4px;
-    padding: 12px;
-}
-.cas-tip__text { color: #9A9A9A; font-size: 11px; white-space: normal; }
-.cas-tip__hl { color: #9CC2FF; }
-
-/* ── Welcome logo lockup ─────────────────────────────────────────────────── */
-.cas-lockup { flex-direction: row; align-items: center; justify-content: center; margin-top: 4px; }
-.cas-lockup__box {
-    width: 56px; height: 56px;
-    border-radius: 10px;
-    background-color: #1F3A66;
-    color: #FFFFFF;
-    -unity-font-style: bold;
-    font-size: 18px;
-    -unity-text-align: middle-center;
-    margin-right: 14px;
-}
-.cas-lockup__divider { width: 1px; height: 44px; background-color: #555555; margin-right: 14px; }
-.cas-lockup__main { color: #FFFFFF; -unity-font-style: bold; font-size: 22px; }
-.cas-lockup__sub { color: #9AA0A6; font-size: 11px; }
-
-/* ── Welcome method rows ─────────────────────────────────────────────────── */
-.cas-method { flex-direction: row; align-items: flex-start; padding-top: 6px; padding-bottom: 6px; }
-.cas-method__radio { margin-top: 2px; margin-right: 10px; }
-.cas-method__title { color: #E5E5E5; font-size: 12px; }
-.cas-method__desc { color: #8E8E8E; font-size: 11px; margin-top: 1px; white-space: normal; }
+/* Green variant — Main Components' "Connect to Hub" explainer panel. */
+.cas-infobox--green { background-color: rgba(34,160,107,0.10); border-color: rgba(34,160,107,0.35); }
+.cas-infobox--green .cas-infobox__text { color: #7FD6AE; margin-left: 0; }
 
 /* ── Components table ────────────────────────────────────────────────────── */
 .cas-table {
@@ -280,7 +195,8 @@
 .cas-setup-cell--link:hover .cas-setup-cell__txt { color: #FFFFFF; }
 .cas-setup-cell__input { margin-top: 3px; min-width: 150px; }
 .cas-muted-cell { color: #6E6E6E; font-size: 11px; }
-.cas-setup-summary { margin-top: 10px; font-size: 12px; }
+/* Base .cas-setup-summary (layout-only) was never applied — only the tone modifiers below are
+   added dynamically (see AboutScreen.SetStatus). Keep the modifiers, drop the dead base rule. */
 .cas-setup-summary--ok { color: #4ADE80; }
 .cas-setup-summary--warn { color: #E0A030; }
 .cas-table__head {
@@ -300,9 +216,12 @@
     border-bottom-color: #2A2A2A;
 }
 .cas-row-grid--alt { background-color: #303030; }
-.cas-col-comp { flex-grow: 1.2; flex-basis: 0; flex-shrink: 1; flex-direction: row; align-items: center; }
-.cas-col-status { flex-grow: 1; flex-basis: 0; flex-shrink: 1; }
-.cas-col-action { flex-grow: 1.6; flex-basis: 0; flex-shrink: 1; flex-direction: row; }
+.cas-col-comp { flex-grow: 1.4; flex-basis: 0; flex-shrink: 1; flex-direction: row; align-items: center; }
+.cas-col-version { flex-grow: 0.6; flex-basis: 0; flex-shrink: 1; }
+.cas-col-status { flex-grow: 0.9; flex-basis: 0; flex-shrink: 1; }
+/* Action column stacks the button above its optional hint label (e.g. "to v1.12.0"). */
+.cas-col-action { flex-grow: 1; flex-basis: 0; flex-shrink: 1; flex-direction: column; align-items: flex-start; }
+.cas-col-remove { flex-grow: 0.9; flex-basis: 0; flex-shrink: 1; }
 .cas-comp__logo { width: 16px; height: 16px; margin-left: 8px; margin-right: 8px; flex-shrink: 0; }
 .cas-comp__name { color: #E5E5E5; font-size: 11px; }
 .cas-comp__sub { color: #7E7E7E; font-size: 10px; }
@@ -314,32 +233,6 @@
 .cas-legend { flex-direction: row; }
 .cas-legend__item { flex-direction: row; align-items: center; margin-left: 14px; }
 .cas-legend__label { color: #9A9A9A; font-size: 11px; margin-left: 5px; }
-
-/* ── Hub tiles ───────────────────────────────────────────────────────────── */
-.cas-tile {
-    flex-direction: row;
-    align-items: center;
-    background-color: #333333;
-    border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px;
-    border-color: #2A2A2A;
-    border-radius: 5px;
-    padding: 12px 14px;
-    margin-bottom: 10px;
-}
-.cas-tile--primary { background-color: #3D6AE0; border-color: #1D3E9A; }
-.cas-tile__iconbox {
-    width: 44px; height: 44px;
-    border-radius: 6px;
-    background-color: rgba(255,255,255,0.18);
-    align-items: center; justify-content: center;
-    flex-shrink: 0;
-    margin-right: 14px;
-}
-.cas-tile__iconbox--ghost { background-color: #454545; }
-.cas-tile__body { flex-grow: 1; }
-.cas-tile__title { color: #FFFFFF; -unity-font-style: bold; font-size: 13px; }
-.cas-tile__desc { color: #9A9A9A; font-size: 11px; margin-top: 2px; white-space: normal; }
-.cas-tile__desc--onblue { color: rgba(255,255,255,0.85); }
 
 /* ── Progress ────────────────────────────────────────────────────────────── */
 .cas-step {
@@ -393,40 +286,11 @@
 .cas-ver-value--latest { color: #4ADE80; -unity-font-style: bold; }
 .cas-bullet { color: #B5B5B5; font-size: 12px; white-space: normal; margin-bottom: 3px; }
 
-/* ── Settings redirect ───────────────────────────────────────────────────── */
-.cas-breadcrumb {
-    flex-direction: row;
-    align-items: center;
-    padding: 6px 18px;
-    border-bottom-width: 1px;
-    border-bottom-color: #2A2A2A;
-}
-.cas-breadcrumb__txt { color: #9A9A9A; font-size: 11px; }
-.cas-breadcrumb__cur { color: #C7C7C7; font-size: 11px; }
-.cas-caslogo-card {
-    width: 86px; height: 86px;
-    border-radius: 10px;
-    background-color: #FFFFFF;
-    align-items: center; justify-content: center;
-    flex-shrink: 0;
-}
-.cas-caslogo-card__main { color: #1F3A66; -unity-font-style: bold; font-size: 20px; }
-.cas-caslogo-card__sub { color: #6E7B8E; font-size: 8px; -unity-text-align: middle-center; margin-top: 2px; }
-
 /* ── Icons (PNG, white strokes; logos keep their own colors) ─────────────── */
 .cas-icon { -unity-background-scale-mode: scale-to-fit; }
-.cas-icon--robot        { background-image: url("../Icons/robot.png"); }
-.cas-icon--gear-big     { background-image: url("../Icons/gear-big.png"); }
-.cas-icon--wand         { background-image: url("../Icons/wand.png"); }
-.cas-icon--reset        { background-image: url("../Icons/reset.png"); }
-.cas-icon--gear-tile    { background-image: url("../Icons/gear-tile.png"); }
-.cas-icon--dashboard    { background-image: url("../Icons/dashboard.png"); }
 .cas-icon--download-big { background-image: url("../Icons/download-big.png"); }
 .cas-icon--download     { background-image: url("../Icons/download.png"); }
 .cas-icon--big-check    { background-image: url("../Icons/big-check.png"); }
-.cas-icon--external     { background-image: url("../Icons/external.png"); }
-.cas-icon--settings     { background-image: url("../Icons/settings.png"); }
-.cas-icon--warning      { background-image: url("../Icons/warning.png"); }
 
 .cas-logo { -unity-background-scale-mode: scale-to-fit; }
 .cas-logo--cas    { background-image: url("../Icons/logo-cas.png"); }
@@ -437,6 +301,9 @@
 .cas-logo--iron   { background-image: url("../Icons/logo-iron.png"); }
 .cas-logo--iap    { background-image: url("../Icons/logo-iap.png"); }
 .cas-logo--firebase { background-image: url("../Icons/logo-firebase.png"); }
+/* Additional-components fallback — the catalog carries no per-package logo, so every entry there
+   gets this generic gear icon instead of a real SDK mark. */
+.cas-logo--generic { background-image: url("../Icons/gear-tile.png"); }
 
 /* ── About-tab update badge ──────────────────────────────────────────────── */
 /* Caption is moved into this child Label so the badge (a child) doesn't collapse the
@@ -454,17 +321,10 @@
 }
 .cas-tab__badge--on { display: flex; }
 
-/* ── CAS ad-format controls (Configuration screen) ──────────────────────────── */
-/* CAS configuration card (formats + audience), full-width under the status grid */
-.cas-cfg { flex-direction: column; margin-top: 8px; padding-top: 8px; border-top-width: 1px; border-top-color: #3D3D3D; }
-.cas-cfg__title { color: #9AA0A6; font-size: 10px; -unity-font-style: bold; margin-bottom: 8px; }
-.cas-cfg__grouplabel { color: #9AA0A6; font-size: 10px; -unity-font-style: bold; margin-bottom: 4px; }
-.cas-cfg__grouplabel--spaced { margin-top: 12px; }
-/* Ad formats: two toggles per row (flex-wrap → 2×2). Networks: Optimal/Families side by side. */
-.cas-cfg__grid { flex-direction: row; flex-wrap: wrap; }
-.cas-cfg__row { flex-direction: row; }
-.cas-cfg__toggle { margin-bottom: 2px; }
-.cas-cfg__toggle--half { flex-grow: 1; flex-basis: 42%; margin-right: 10px; margin-bottom: 2px; }
+/* ── Components action hint ──────────────────────────────────────────────── */
+/* In-installer CAS ad-format/audience config was removed (config lives in CAS.AI's own settings
+   window) — only the action-hint label below survived from the old .cas-cfg* block; it's reused
+   by the Main Components table (e.g. "to v1.12.0" under an Update button). */
 .cas-cfg__hint { color: #6E6E6E; font-size: 10px; margin-top: 6px; white-space: normal; }
 
 /* ── Android build templates banner ──────────────────────────────────────── */

@@ -11,7 +11,9 @@ namespace PSV.Installer.Wizard
     /// Installation Progress. In auto-install mode (set by <see cref="AutoInstaller"/>) it drives
     /// a step-by-step install: poll the real UPM package list, and as each default component
     /// resolves, kick off the next one — surviving the per-step domain reloads — then route to
-    /// Done. Outside auto mode it shows a static stub (dev/manual preview).
+    /// Done. If this screen is entered with no failure, no completion, and no active auto-install
+    /// (e.g. Back from Configure after Continue already cleared the run) there is nothing to show,
+    /// so it redirects to Ready instead of rendering fabricated placeholder data.
     /// </summary>
     internal sealed class ProgressScreen : IWizardScreen
     {
@@ -25,6 +27,24 @@ namespace PSV.Installer.Wizard
         private readonly VisualElement _fill;
         private readonly Label _pct;
 
+        // Header + footer, swapped between the three inline states (installing / failed / complete).
+        private readonly Label _title;
+        private readonly Label _subtitle;
+        private readonly Button _btnCancel;
+        private readonly Button _btnContinue;
+
+        // Failure panel.
+        private readonly VisualElement _failPanel;
+        private readonly Label _failTitle;
+        private readonly Label _failMessage;
+        private readonly Button _btnRetryStep;
+        private readonly Button _btnCopyLog;
+        private ProgressFailureModel _failure;
+        private string _failedId;
+
+        // Completion panel.
+        private readonly VisualElement _donePanel;
+
         // Auto-install tracking.
         private const double StepPauseSeconds = 0.7; // breathing room so the UI paints between steps
         // Watchdog: a step that hasn't resolved this long after its install was issued is treated as
@@ -35,7 +55,7 @@ namespace PSV.Installer.Wizard
         // A Client.List request that never completes (PM busy / lock contention) would freeze the whole
         // driver, since Drive only runs once a list completes. Abandon and retry a request older than this.
         private const double ListRequestTimeoutSeconds = 25;
-        private const string LogPrefix = "[PSV Installer]";
+        private const string LogPrefix = "[CAS Hub]";
         private ListRequest _listReq;
         private double _listReqStartedAt; // when the in-flight _listReq was issued (stuck-request guard)
         private IVisualElementScheduledItem _poll;
@@ -50,6 +70,19 @@ namespace PSV.Installer.Wizard
             _stepsHost = Root.Q<VisualElement>("progress-steps");
             _fill      = Root.Q<VisualElement>("progress-fill");
             _pct       = Root.Q<Label>("progress-pct");
+
+            _title     = Root.Q<Label>("progress-title");
+            _subtitle  = Root.Q<Label>("progress-subtitle");
+            _btnCancel = Root.Q<Button>("btn-cancel");
+            _btnContinue = Root.Q<Button>("btn-continue");
+
+            _failPanel   = Root.Q<VisualElement>("fail-panel");
+            _failTitle   = Root.Q<Label>("fail-title");
+            _failMessage = Root.Q<Label>("fail-message");
+            _btnRetryStep = Root.Q<Button>("btn-retry-step");
+            _btnCopyLog   = Root.Q<Button>("btn-copy-log");
+
+            _donePanel = Root.Q<VisualElement>("done-panel");
         }
 
         public void OnEnter(WizardRouter router)
@@ -58,44 +91,136 @@ namespace PSV.Installer.Wizard
             if (!_bound)
             {
                 _bound = true;
-                var cancel = Root.Q<Button>("progress-cancel");
-                if (cancel != null) cancel.clicked += OnCancel;
+                if (_btnCancel != null) _btnCancel.clicked += OnCancel;
+                if (_btnRetryStep != null) _btnRetryStep.clicked += OnRetryStep;
+                if (_btnCopyLog != null) _btnCopyLog.clicked += OnCopyLog;
+                if (_btnContinue != null) _btnContinue.clicked += OnContinue;
             }
 
-            if (AutoInstaller.IsActive)
+            // Persisted phase flags are checked BEFORE IsActive, and survive a domain reload that
+            // happens after a step failed or the whole run finished but before the user acted on it
+            // (Retry/Cancel/Continue) — so a reload never silently drops back to the "nothing to
+            // show" redirect or a hung poll. See AutoInstaller.MarkFailed/MarkCompleted for why
+            // these can't be derived from the watchdog deadline or IssuedIndex alone.
+            if (AutoInstaller.TryGetFailure(out var failedId, out var failedDetail))
+                EnterFailedMode(failedId, failedDetail);
+            else if (AutoInstaller.IsCompleted)
+                EnterCompletedMode();
+            else if (AutoInstaller.IsActive)
                 EnterAutoMode();
             else
-                EnterStubMode();
+                // Nothing to show — reached e.g. via Back from Configure after Continue cleared the
+                // run (see OnContinue). Redirect instead of rendering fabricated preview data.
+                _router.GoTo("ready");
         }
 
         private void OnCancel()
         {
             StopPoll();
-            if (AutoInstaller.IsActive) AutoInstaller.Clear();
-            _router.GoTo("components");
+            AutoInstaller.Clear();
+            _router.GoTo("ready");
+        }
+
+        private void OnContinue()
+        {
+            AutoInstaller.Clear();
+            _router.GoTo("configure");
+        }
+
+        // ── Inline panel state (installing / failed / complete) ──────────────
+
+        /// <summary>Resets the screen to its default "installing" chrome — called on every fresh
+        /// entry so a failure/completion shown on a previous run doesn't linger.</summary>
+        private void ResetPanels()
+        {
+            if (_failPanel != null) _failPanel.style.display = DisplayStyle.None;
+            if (_donePanel != null) _donePanel.style.display = DisplayStyle.None;
+            if (_title != null) _title.text = "Installation Progress";
+            if (_subtitle != null) _subtitle.style.display = DisplayStyle.None;
+            if (_btnCancel != null) _btnCancel.style.display = DisplayStyle.Flex;
+            if (_btnContinue != null) _btnContinue.style.display = DisplayStyle.None;
+        }
+
+        private void ShowFailure(string id, string detail)
+        {
+            _failedId = id;
+            _failure = ProgressFailureModel.From(NameOf(id), detail);
+            if (_failTitle != null) _failTitle.text = _failure.Title;
+            if (_failMessage != null) _failMessage.text = _failure.Message;
+            if (_failPanel != null) _failPanel.style.display = DisplayStyle.Flex;
+        }
+
+        private void OnRetryStep()
+        {
+            // Guard FIRST: if we can't actually identify the failed step, don't hide the panel — that
+            // would strand the user on a blank screen with no visible state and no poll running.
+            // Leaving the panel up keeps Copy log / Cancel available.
+            if (string.IsNullOrEmpty(_failedId) || _targetIds == null) return;
+
+            if (_failPanel != null) _failPanel.style.display = DisplayStyle.None;
+            AutoInstaller.ClearFailure();
+
+            var idx = _targetIds.IndexOf(_failedId);
+            if (idx >= 0)
+                // Roll IssuedIndex back to just before the failed step so Drive() treats it as
+                // not-yet-issued and re-runs InstallOne for THIS step only. Earlier steps stay
+                // resolved (Drive reads live UPM state, not IssuedIndex, to know what's done) and
+                // are never re-installed — the SessionState queue otherwise carries on unchanged.
+                AutoInstaller.IssuedIndex = idx - 1;
+
+            _issueAtTime = 0;
+            _failedId = null;
+            _failure = null;
+            StartPoll();
+        }
+
+        private void OnCopyLog()
+        {
+            if (_failure != null) EditorGUIUtility.systemCopyBuffer = _failure.Log;
+        }
+
+        private void ShowComplete()
+        {
+            if (_title != null) _title.text = "Installation complete";
+            if (_subtitle != null)
+            {
+                _subtitle.text = "All components were installed successfully.";
+                _subtitle.style.display = DisplayStyle.Flex;
+            }
+            if (_donePanel != null) _donePanel.style.display = DisplayStyle.Flex;
+            if (_btnCancel != null) _btnCancel.style.display = DisplayStyle.None;
+            if (_btnContinue != null) _btnContinue.style.display = DisplayStyle.Flex;
         }
 
         // ── Auto-install mode (real, step by step) ───────────────────────────
 
-        private void EnterAutoMode()
+        /// <summary>Populates <see cref="_targetIds"/>/<see cref="_targetNames"/> from the current
+        /// component statuses, once per screen instance. Shared by the live driver and the
+        /// reload-recovery paths (<see cref="EnterCompletedMode"/>/<see cref="EnterFailedMode"/>),
+        /// which need the same id→name map to render without waiting on a poll tick.</summary>
+        private void PopulateTargetsIfNeeded()
         {
-            if (_targetIds == null)
+            if (_targetIds != null) return;
+            _targetIds = new List<string>();
+            _targetNames = new Dictionary<string, string>();
+            if (ComponentStatusProvider.TryGetStatuses(out var statuses, out _))
             {
-                _targetIds = new List<string>();
-                _targetNames = new Dictionary<string, string>();
-                if (ComponentStatusProvider.TryGetStatuses(out var statuses, out _))
+                foreach (var s in statuses)
                 {
-                    foreach (var s in statuses)
-                    {
-                        // A non-UPM copy is already on disk — it will never appear in the UPM
-                        // package list, so polling for it would stall the sequence forever.
-                        // Skip it (it's also skipped by the planner, so it's never installed here).
-                        if (s.OutsideUpm) continue;
-                        _targetIds.Add(s.Id);
-                        _targetNames[s.Id] = s.DisplayName;
-                    }
+                    // A non-UPM copy is already on disk — it will never appear in the UPM
+                    // package list, so polling for it would stall the sequence forever.
+                    // Skip it (it's also skipped by the planner, so it's never installed here).
+                    if (s.OutsideUpm) continue;
+                    _targetIds.Add(s.Id);
+                    _targetNames[s.Id] = s.DisplayName;
                 }
             }
+        }
+
+        private void EnterAutoMode()
+        {
+            ResetPanels();
+            PopulateTargetsIfNeeded();
 
             if (_targetIds.Count == 0)
             {
@@ -108,6 +233,50 @@ namespace PSV.Installer.Wizard
 
             Render(new HashSet<string>(), currentIndex: 0);
             StartPoll();
+        }
+
+        /// <summary>Reload-recovery entry: the whole queue finished (<see cref="AutoInstaller.IsCompleted"/>)
+        /// on a PREVIOUS instance of this screen, and a domain reload (unrelated to this run — it
+        /// already finished) has now recreated it. Rebuilds the step list from live component status
+        /// (all resolved, since the run completed) and redraws the completion panel — no polling
+        /// needed, nothing left to install.</summary>
+        private void EnterCompletedMode()
+        {
+            StopPoll();
+            ResetPanels();
+            PopulateTargetsIfNeeded();
+            if (_targetIds.Count > 0)
+                Render(new HashSet<string>(_targetIds), currentIndex: -1);
+            else
+                _stepsHost?.Clear();
+            ShowComplete();
+        }
+
+        /// <summary>Reload-recovery entry: a step failed synchronously (before <see cref="AutoInstaller.StepDeadline"/>
+        /// was ever armed, so the watchdog has nothing to fire on) and a domain reload has recreated
+        /// this screen before the user clicked Retry/Cancel. Redraws the failure panel from the
+        /// persisted id/detail instead of silently sitting on a poll that will never resume by itself.</summary>
+        private void EnterFailedMode(string id, string detail)
+        {
+            StopPoll();
+            ResetPanels();
+            PopulateTargetsIfNeeded();
+            if (_targetIds.Count > 0)
+            {
+                // Steps before the failed one are assumed resolved (that's how the driver reached
+                // this one); the fail panel below is the authoritative status regardless of this
+                // best-effort step-list paint — the next Retry re-polls live state anyway.
+                var idx = _targetIds.IndexOf(id);
+                var resolvedGuess = new HashSet<string>();
+                if (idx > 0)
+                    for (var i = 0; i < idx; i++) resolvedGuess.Add(_targetIds[i]);
+                Render(resolvedGuess, currentIndex: idx);
+            }
+            else
+            {
+                _stepsHost?.Clear();
+            }
+            ShowFailure(id, detail);
         }
 
         private void StartPoll()
@@ -168,11 +337,15 @@ namespace PSV.Installer.Wizard
 
             if (next < 0)
             {
-                // Everything resolved → write any captured CAS IDs into the settings asset, then done.
+                // Everything resolved → show the completion state inline (no navigation to a separate
+                // Done screen). Deliberately does NOT call AutoInstaller.Clear() here — that's deferred
+                // to Cancel/Continue (the only two exits from this state) so an unrelated domain reload
+                // landing back on this screen before the user acts still finds AutoInstaller.IsCompleted
+                // true and redraws the completion panel via EnterCompletedMode, instead of falling
+                // through to the "nothing to show" redirect.
                 StopPoll();
-                AutoInstaller.Clear();
-                CasIdApplier.ApplyPending();
-                _router.GoTo("done");
+                AutoInstaller.MarkCompleted();
+                ShowComplete();
                 return;
             }
 
@@ -232,15 +405,17 @@ namespace PSV.Installer.Wizard
             }
         }
 
-        // A hard failure (apply failed, or nothing landed in the manifest): stop, surface, and drop
-        // back to the manual Components tab so the user can retry per component.
+        // A hard failure (apply failed, or nothing landed in the manifest): stop and surface the
+        // inline failure panel. Deliberately does NOT call AutoInstaller.Clear() — IssuedIndex stays
+        // pointed at the failed step so "Retry step" can re-issue just this one without losing the
+        // steps already resolved earlier in the SessionState-persisted queue. Also persists the
+        // failure (MarkFailed) so a domain reload before the user clicks Retry/Cancel re-enters via
+        // EnterFailedMode instead of silently polling a watchdog that was never armed for this step.
         private void FailStep(string id, string detail)
         {
             StopPoll();
-            AutoInstaller.Clear();
-            EditorUtility.DisplayDialog("PSV Installer",
-                $"Couldn't install {NameOf(id)}.\n\n{detail}", "OK");
-            _router.GoTo("components");
+            AutoInstaller.MarkFailed(id, detail);
+            ShowFailure(id, detail);
         }
 
         // The step was issued and written to the manifest but hasn't resolved within the deadline.
@@ -249,7 +424,7 @@ namespace PSV.Installer.Wizard
         private void WatchdogTimeout(string id)
         {
             StopPoll();
-            var keepWaiting = EditorUtility.DisplayDialog("PSV Installer",
+            var keepWaiting = EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                 $"{NameOf(id)} is taking longer than expected to install " +
                 $"({Mathf.RoundToInt((float)StepTimeoutSeconds)}s).\n\n" +
                 "It may still be downloading or cloning, or it may have failed. Check the Console for " +
@@ -291,21 +466,6 @@ namespace PSV.Installer.Wizard
         }
 
         private string NameOf(string id) => _targetNames.TryGetValue(id, out var n) ? n : id;
-
-        // ── Stub mode (dev / manual preview) ─────────────────────────────────
-
-        private void EnterStubMode()
-        {
-            StopPoll();
-            if (_stepsHost == null) return;
-
-            _stepsHost.Clear();
-            foreach (var step in StubData.ProgressSteps)
-                _stepsHost.Add(BuildStep(step.Label, step.State, step.Right));
-
-            if (_fill != null) _fill.style.width = Length.Percent(StubData.ProgressPercent);
-            if (_pct != null) _pct.text = StubData.ProgressPercent + "%";
-        }
 
         // ── Shared step row ──────────────────────────────────────────────────
 

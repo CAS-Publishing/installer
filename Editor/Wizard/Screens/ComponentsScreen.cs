@@ -8,17 +8,18 @@ namespace PSV.Installer.Wizard
         public VisualElement Root { get; }
 
         // Equal width for the action + Remove buttons so they line up in fixed slots across rows.
-        // Sized to the longest label ("Up to date").
-        private const float ActionButtonWidth = 84f;
+        private const float ActionButtonWidth = 100f;
 
         private bool _bound;
         private readonly VisualElement _rowsHost;
+        private readonly VisualElement _additionalRowsHost;
 
         public ComponentsScreen()
         {
             Root = new VisualElement();
             WizardAssets.CloneInto("Components", Root);
             _rowsHost = Root.Q<VisualElement>("components-rows");
+            _additionalRowsHost = Root.Q<VisualElement>("additional-rows");
         }
 
         public void OnEnter(WizardRouter router)
@@ -49,37 +50,50 @@ namespace PSV.Installer.Wizard
 
         private void Rebuild()
         {
-            if (_rowsHost == null) return;
+            // Both tables read from the same catalog/scan, so a catalog failure fails both
+            // TryGet calls identically — show the error note once, on the main table only, or it
+            // would render twice (same message) stacked under Main and Additional.
+            Fill(_rowsHost, ComponentStatusProvider.TryGetStatuses, showErrorNote: true);
+            Fill(_additionalRowsHost, ComponentStatusProvider.TryGetAdditionalStatuses, showErrorNote: false);
+        }
 
-            // If CAS was installed (here or via the row button), fill its managerIds from any
-            // CAS ID captured on the first screen. Idempotent — only fills empty/placeholder slots.
-            CasIdApplier.ApplyPending();
+        private delegate bool TryGetStatusesFn(out System.Collections.Generic.List<ComponentStatus> statuses, out string error);
 
-            _rowsHost.Clear();
+        private void Fill(VisualElement host, TryGetStatusesFn tryGet, bool showErrorNote)
+        {
+            if (host == null) return;
 
-            if (!ComponentStatusProvider.TryGetStatuses(out var statuses, out var error))
+            host.Clear();
+
+            if (!tryGet(out var statuses, out var error))
             {
-                var note = new Label(error);
-                note.AddToClassList("cas-empty-note");
-                _rowsHost.Add(note);
+                if (showErrorNote)
+                {
+                    var note = new Label(error);
+                    note.AddToClassList("cas-empty-note");
+                    host.Add(note);
+                }
                 return;
             }
 
             var i = 0;
             foreach (var st in statuses)
             {
-                _rowsHost.Add(BuildRow(st, alt: i % 2 == 1));
+                host.Add(BuildRow(st, alt: i % 2 == 1));
                 i++;
             }
         }
 
         private VisualElement BuildRow(ComponentStatus c, bool alt)
         {
+            var recommended = ComponentStatusProvider.ResolveRecommendedVersion(c.Id);
+            var vm = ComponentsViewMap.Map(c, recommended);
+
             var row = new VisualElement();
             row.AddToClassList("cas-row-grid");
             if (alt) row.AddToClassList("cas-row-grid--alt");
 
-            // Component column: status dot + logo + name/sub.
+            // SDK column: status dot + logo + name/sub.
             var comp = new VisualElement();
             comp.AddToClassList("cas-col-comp");
 
@@ -105,68 +119,84 @@ namespace PSV.Installer.Wizard
             comp.Add(logo);
             comp.Add(txt);
 
-            // Status column — real state, with detected version when present.
+            // Version column.
+            var versionCol = new VisualElement();
+            versionCol.AddToClassList("cas-col-version");
+            var ver = FriendlyVersion(c.Version);
+            var versionLabel = new Label(string.IsNullOrEmpty(ver) ? "—" : ver);
+            versionLabel.AddToClassList("cas-comp__sub");
+            versionCol.Add(versionLabel);
+
+            // Status column — PDF terminology (ComponentsViewMap), tone classes stay driven by the
+            // scanner's Tone (green/yellow/red/grey) since PDF wording maps 1:1 onto those buckets.
             var statusCol = new VisualElement();
             statusCol.AddToClassList("cas-col-status");
-            var ver = FriendlyVersion(c.Version);
-            var statusText = string.IsNullOrEmpty(ver) ? c.StatusText : $"{c.StatusText} · {ver}";
-            var statusLabel = new Label(statusText);
+            var statusLabel = new Label(vm.StatusText);
             statusLabel.AddToClassList("cas-status");
             statusLabel.AddToClassList("cas-status--" + c.Tone);
             statusCol.Add(statusLabel);
 
-            // Action column — real Install/Update via the migrator (behind a confirm dialog);
-            // disabled when there's nothing to do. Fixed-width slots, left-aligned: the action
-            // button always occupies the left slot (so a lone Install lines up under the
-            // Update/Up-to-date of other rows, not under their Remove), Remove the right slot.
+            // Action column — real Install/Update/Connect-to-Hub/Fix via the migrator (behind a
+            // confirm dialog); no button at all when there's nothing to do (RowAction.None).
             var actionCol = new VisualElement();
             actionCol.AddToClassList("cas-col-action");
 
-            var btn = new Button(() =>
+            if (vm.Action != RowAction.None)
             {
-                // Out-of-UPM components migrate (delete the manual copy, then UPM-install);
-                // everything else is a normal Install/Update/Fix via the migrator.
-                var changed = c.GitInstalled
-                    ? WizardActions.SwitchToUpm(c.Id, c.DisplayName)
-                    : c.OutsideUpm
-                        ? WizardActions.MigrateExternal(c.Id, c.DisplayName)
-                        : WizardActions.Apply(c.Id, c.DisplayName);
-                if (changed) Rebuild();
-            })
-            { text = c.ActionText };
-            btn.AddToClassList("cas-btn");
-            btn.AddToClassList("cas-btn--sm");
-            btn.AddToClassList(ActionVariantClass(c.ActionVariant));
-            btn.SetEnabled(c.Actionable);
-            btn.style.width = ActionButtonWidth;
-            btn.style.flexShrink = 0;
-            actionCol.Add(btn);
-
-            // Remove is offered for any UPM-installed component — saves manual UPM editing and acts
-            // as a recovery path for a botched install. Writes manifest.json (reversible via git).
-            // Not shown for out-of-UPM copies: there's no manifest entry to remove (use Migrate).
-            if (c.Installed && !c.OutsideUpm)
-            {
-                var remove = new Button(() =>
+                var btn = new Button(() =>
                 {
-                    // Target the id actually in manifest.json (legacy id when present under one),
-                    // else removal silently no-ops — the "delete does nothing" bug.
-                    if (WizardActions.Remove(c.InstalledId, c.DisplayName))
-                        Rebuild();
+                    // Dispatch is unchanged by the PDF-terminology rename: an out-of-UPM copy
+                    // migrates, a git dependency switches, everything else is Install/Update/Fix
+                    // via the migrator.
+                    var changed = c.GitInstalled
+                        ? WizardActions.SwitchToUpm(c.Id, c.DisplayName)
+                        : c.OutsideUpm
+                            ? WizardActions.MigrateExternal(c.Id, c.DisplayName)
+                            : WizardActions.Apply(c.Id, c.DisplayName);
+                    if (changed) Rebuild();
                 })
-                { text = "Remove" };
-                remove.AddToClassList("cas-btn");
-                remove.AddToClassList("cas-btn--sm");
-                remove.AddToClassList("cas-btn--ghost");
-                remove.style.width = ActionButtonWidth;
-                remove.style.flexShrink = 0;
-                remove.style.marginLeft = 6;
-                actionCol.Add(remove);
+                { text = vm.ActionText };
+                btn.AddToClassList("cas-btn");
+                btn.AddToClassList("cas-btn--sm");
+                btn.AddToClassList(ActionVariantClass(vm.Action));
+                btn.style.width = ActionButtonWidth;
+                btn.style.flexShrink = 0;
+                actionCol.Add(btn);
             }
 
+            if (!string.IsNullOrEmpty(vm.ActionHint))
+            {
+                var hint = new Label(vm.ActionHint);
+                hint.AddToClassList("cas-cfg__hint");
+                hint.style.marginTop = vm.Action != RowAction.None ? 2 : 0;
+                hint.style.width = ActionButtonWidth;
+                actionCol.Add(hint);
+            }
+
+            // Remove column — writes directly to Packages/manifest.json (reversible via git), behind
+            // WizardActions.Remove's own confirm dialog. Disabled (not hidden) when RemoveEnabled is
+            // false, so the column stays aligned across rows.
+            var removeCol = new VisualElement();
+            removeCol.AddToClassList("cas-col-remove");
+            var remove = new Button(() =>
+            {
+                // Target the id actually in manifest.json (legacy id when present under one),
+                // else removal silently no-ops — the "delete does nothing" bug.
+                if (WizardActions.Remove(c.InstalledId, c.DisplayName))
+                    Rebuild();
+            })
+            { text = "Remove SDK" };
+            remove.AddToClassList("cas-btn");
+            remove.AddToClassList("cas-btn--sm");
+            remove.AddToClassList("cas-btn--danger");
+            remove.SetEnabled(vm.RemoveEnabled);
+            removeCol.Add(remove);
+
             row.Add(comp);
+            row.Add(versionCol);
             row.Add(statusCol);
             row.Add(actionCol);
+            row.Add(removeCol);
             return row;
         }
 
@@ -180,13 +210,15 @@ namespace PSV.Installer.Wizard
             return v;
         }
 
-        private static string ActionVariantClass(string actVar)
+        private static string ActionVariantClass(RowAction action)
         {
-            switch (actVar)
+            switch (action)
             {
-                case "primary": return "cas-btn--primary";
-                case "warn":    return "cas-btn--warn";
-                default:        return "cas-btn--muted";
+                case RowAction.Install: return "cas-btn--primary";
+                case RowAction.Update:
+                case RowAction.ConnectToHub:
+                case RowAction.Fix:      return "cas-btn--warn";
+                default:                 return "cas-btn--muted";
             }
         }
     }

@@ -36,36 +36,36 @@ namespace PSV.Installer.Wizard
             var load = CatalogLoader.Load();
             if (load.Status != CatalogLoadStatus.Ok)
             {
-                EditorUtility.DisplayDialog("PSV Installer",
+                EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                     "Catalog is unavailable — cannot apply. " +
                     (load.Error ?? "Make sure the metadata package is installed."), "OK");
                 return false;
             }
 
             var report = ProjectScanner.Scan(load.Catalog);
-            var plan = MigrationPlanner.Plan(load.Catalog, report, new SingleSelection(componentId), InstallMethodState.Get(), out var warnings);
+            var plan = MigrationPlanner.Plan(load.Catalog, report, new SingleSelection(componentId), InstallMethod.Upm, out var warnings);
 
             if (plan.Count == 0)
             {
-                EditorUtility.DisplayDialog("PSV Installer",
+                EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                     $"Nothing to apply for {displayName} — it may already be up to date, " +
                     "or the catalog has no version configured for it.", "OK");
                 return false;
             }
 
-            if (!EditorUtility.DisplayDialog("PSV Installer",
+            if (!EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                     BuildSummary(displayName, plan, warnings), "Apply", "Cancel"))
                 return false;
 
             var result = new MigrationRunner().Apply(plan);
             if (result.Success)
             {
-                Debug.Log($"[PSV Installer Wizard] Applied {result.ExecutedCount} action(s) for {displayName}. " +
+                Debug.Log($"[CAS Hub] Applied {result.ExecutedCount} action(s) for {displayName}. " +
                           "Unity will resolve packages now.");
             }
             else
             {
-                EditorUtility.DisplayDialog("PSV Installer",
+                EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                     $"Apply failed for {displayName}:\n• " + string.Join("\n• ", result.Failures) +
                     "\n\nNo backup is kept — use 'git status' / 'git restore .' to inspect or revert.", "OK");
             }
@@ -84,7 +84,7 @@ namespace PSV.Installer.Wizard
             var load = CatalogLoader.Load();
             if (load.Status != CatalogLoadStatus.Ok)
             {
-                EditorUtility.DisplayDialog("PSV Installer",
+                EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                     "Catalog is unavailable — cannot switch. " +
                     (load.Error ?? "Make sure the metadata package is installed."), "OK");
                 return false;
@@ -97,7 +97,7 @@ namespace PSV.Installer.Wizard
                     if (e != null && e.Id == componentId) { rec = e; break; }
             if (rec == null)
             {
-                EditorUtility.DisplayDialog("PSV Installer",
+                EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                     $"{displayName} is not an external record in the catalog — cannot switch.", "OK");
                 return false;
             }
@@ -105,7 +105,7 @@ namespace PSV.Installer.Wizard
             var version = !string.IsNullOrEmpty(rec.RecommendedVersion) ? rec.RecommendedVersion : rec.MinVersion;
             if (string.IsNullOrEmpty(version))
             {
-                EditorUtility.DisplayDialog("PSV Installer",
+                EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                     $"No version configured for {displayName} in the catalog — cannot switch.", "OK");
                 return false;
             }
@@ -124,7 +124,7 @@ namespace PSV.Installer.Wizard
             // value (git URL → registry version), which is what actually performs the switch.
             plan.Add(new UpdatePackageVersion(rec.Id, version));
 
-            if (!EditorUtility.DisplayDialog("PSV Installer",
+            if (!EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                     $"Switch {displayName} from a git URL to the registry version {version}?\n\n" +
                     "This replaces the git dependency in manifest.json with the scoped-registry package.",
                     "Switch", "Cancel"))
@@ -132,10 +132,10 @@ namespace PSV.Installer.Wizard
 
             var result = new MigrationRunner().Apply(plan);
             if (result.Success)
-                Debug.Log($"[PSV Installer Wizard] Switched {displayName} to UPM ({rec.Id}@{version}). " +
+                Debug.Log($"[CAS Hub] Switched {displayName} to UPM ({rec.Id}@{version}). " +
                           "Unity will resolve packages now.");
             else
-                EditorUtility.DisplayDialog("PSV Installer",
+                EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                     $"Switch failed for {displayName}:\n• " + string.Join("\n• ", result.Failures), "OK");
             return true;
         }
@@ -151,7 +151,7 @@ namespace PSV.Installer.Wizard
         {
             var plan = new List<MigrationAction> { new RemovePackage(componentId) };
 
-            if (!EditorUtility.DisplayDialog("PSV Installer",
+            if (!EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                     $"Remove {displayName}?\n\n  • Remove {componentId}\n\n" +
                     "This writes directly to Packages/manifest.json. " +
                     "Make sure you have a clean git state — use 'git restore .' to undo if needed.",
@@ -161,12 +161,12 @@ namespace PSV.Installer.Wizard
             var result = new MigrationRunner().Apply(plan);
             if (result.Success)
             {
-                Debug.Log($"[PSV Installer Wizard] Removed {displayName} ({componentId}). " +
+                Debug.Log($"[CAS Hub] Removed {displayName} ({componentId}). " +
                           "Unity will resolve packages now.");
             }
             else
             {
-                EditorUtility.DisplayDialog("PSV Installer",
+                EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                     $"Remove failed for {displayName}:\n• " + string.Join("\n• ", result.Failures) +
                     "\n\nNo backup is kept — use 'git status' / 'git restore .' to inspect or revert.", "OK");
             }
@@ -186,7 +186,7 @@ namespace PSV.Installer.Wizard
             var load = CatalogLoader.Load();
             if (load.Status != CatalogLoadStatus.Ok)
             {
-                EditorUtility.DisplayDialog("PSV Installer",
+                EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                     "Catalog is unavailable — cannot migrate. " +
                     (load.Error ?? "Make sure the metadata package is installed."), "OK");
                 return false;
@@ -199,7 +199,7 @@ namespace PSV.Installer.Wizard
                     if (e != null && e.Id == componentId) { rec = e; break; }
             if (rec == null)
             {
-                EditorUtility.DisplayDialog("PSV Installer",
+                EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                     $"{displayName} is not an external record in the catalog — cannot migrate.", "OK");
                 return false;
             }
@@ -207,7 +207,7 @@ namespace PSV.Installer.Wizard
             var baseVersion = !string.IsNullOrEmpty(rec.RecommendedVersion) ? rec.RecommendedVersion : rec.MinVersion;
             if (string.IsNullOrEmpty(baseVersion))
             {
-                EditorUtility.DisplayDialog("PSV Installer",
+                EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                     $"No version configured for {displayName} in the catalog — cannot migrate.", "OK");
                 return false;
             }
@@ -248,7 +248,7 @@ namespace PSV.Installer.Wizard
 
             if (deletePaths.Count == 0)
             {
-                EditorUtility.DisplayDialog("PSV Installer",
+                EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                     $"{displayName} appears to be installed manually, but its known folders weren't " +
                     "found under Assets/ (non-standard layout). Remove the manual copy yourself, then " +
                     "use Install to add the UPM version.", "OK");
@@ -281,13 +281,13 @@ namespace PSV.Installer.Wizard
                 var gitBlocked = del.Failures.Count > 0 &&
                                  del.Failures.All(f => f.Contains(MigrationRunner.GitRefusalMarker));
 
-                if (!gitBlocked || !EditorUtility.DisplayDialog("PSV Installer",
+                if (!gitBlocked || !EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                         $"Some files of {displayName} aren't tracked by git, so they can't be recovered " +
                         "if removed:\n• " + string.Join("\n• ", del.Failures) +
                         "\n\nDelete them PERMANENTLY anyway? This cannot be undone.",
                         "Delete anyway", "Cancel"))
                 {
-                    EditorUtility.DisplayDialog("PSV Installer",
+                    EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                         $"Couldn't remove the manual copy of {displayName}:\n• " +
                         string.Join("\n• ", del.Failures) +
                         "\n\nCommit those files to git first (so they're recoverable), or delete them " +
@@ -301,7 +301,7 @@ namespace PSV.Installer.Wizard
                 var forced = new MigrationRunner().Apply(forcePlan);
                 if (!forced.Success)
                 {
-                    EditorUtility.DisplayDialog("PSV Installer",
+                    EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                         $"Delete-anyway still failed for {displayName}:\n• " +
                         string.Join("\n• ", forced.Failures) +
                         "\n\nmanifest.json was NOT changed.", "OK");
@@ -329,16 +329,16 @@ namespace PSV.Installer.Wizard
                     if (installed.Length > 0) installed.Append(", ");
                     installed.Append($"{a.Id}@{a.Version}");
                 }
-                Debug.Log($"[PSV Installer Wizard] Migrated {displayName} to UPM ({installed}). " +
+                Debug.Log($"[CAS Hub] Migrated {displayName} to UPM ({installed}). " +
                           "Unity will resolve packages now.");
                 if (sharedLeftovers.Count > 0)
-                    Debug.LogWarning($"[PSV Installer Wizard] {displayName}: files in the shared Assets/Plugins " +
+                    Debug.LogWarning($"[CAS Hub] {displayName}: files in the shared Assets/Plugins " +
                         "folder were NOT deleted — remove them by hand to avoid conflicts: Assets/" +
                         string.Join(", Assets/", sharedLeftovers));
             }
             else
             {
-                EditorUtility.DisplayDialog("PSV Installer",
+                EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                     $"The manual copy was removed, but the UPM install of {displayName} failed:\n• " +
                     string.Join("\n• ", add.Failures) +
                     "\n\nRun Install again from the Components tab.", "OK");

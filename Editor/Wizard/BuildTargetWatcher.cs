@@ -5,8 +5,9 @@ namespace PSV.Installer.Wizard
 {
     /// <summary>
     /// When the active build target switches to Android or iOS and CAS is installed but that
-    /// platform's CAS id isn't configured yet, auto-opens the wizard at Welcome (preselecting the
-    /// new platform) so the user can configure it. Other targets are ignored. Implements Unity's
+    /// platform's CAS id isn't configured yet, auto-opens the wizard on the Configuration screen so
+    /// the user can configure it (the screen re-scans and shows per-platform status itself — no
+    /// platform id needs to be threaded through). Other targets are ignored. Implements Unity's
     /// build-target-changed callback (invoked by the Editor on a successful target switch).
     /// </summary>
     internal sealed class BuildTargetWatcher : IActiveBuildTargetChanged
@@ -43,10 +44,10 @@ namespace PSV.Installer.Wizard
 
             if (!BuildSwitchPolicy.ShouldOpenOnSwitch(
                     CasPresence.IsInstalled(),
-                    CasIdApplier.ReadExisting(platform)))
+                    CasSettingsReader.ReadExisting(platform)))
                 return;
 
-            InstallerWizardWindow.OpenAtWelcome(platform);
+            InstallerWizardWindow.OpenAtConfigure();
         }
     }
 }

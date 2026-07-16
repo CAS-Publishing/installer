@@ -46,7 +46,7 @@ namespace PSV.Installer.Wizard
         {
             if (!_screens.TryGetValue(id, out var next))
             {
-                Debug.LogWarning($"[PSV Installer Wizard] No screen registered with id '{id}'.");
+                Debug.LogWarning($"[CAS Hub] No screen registered with id '{id}'.");
                 return;
             }
 

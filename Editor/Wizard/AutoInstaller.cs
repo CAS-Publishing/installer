@@ -26,8 +26,18 @@ namespace PSV.Installer.Wizard
         private const string IssuedKey = "PSV.Installer.Wizard.AutoInstallIssuedIndex";
         private const string DeadlineKey = "PSV.Installer.Wizard.AutoInstallStepDeadline";
         private const string ResumeKey = "PSV.Installer.Wizard.ResumeRecommendedAfterCatalog";
+        // Persisted "phase" flags so ProgressScreen can correctly redraw a failed or completed run
+        // after an UNRELATED domain reload (e.g. background asset import), instead of falling back to
+        // the "nothing to show" redirect (completed) or silently sitting on a poll that will never
+        // fire (failed — no watchdog is armed for a step that failed synchronously, before ever
+        // reaching UPM). Both are
+        // reset by Clear(), which now runs at the top of StartAll() too so a fresh run never inherits
+        // stale phase state from a previous one.
+        private const string CompletedKey = "PSV.Installer.Wizard.AutoInstallCompleted";
+        private const string FailedIdKey = "PSV.Installer.Wizard.AutoInstallFailedId";
+        private const string FailedDetailKey = "PSV.Installer.Wizard.AutoInstallFailedDetail";
 
-        private const string LogPrefix = "[PSV Installer]";
+        private const string LogPrefix = "[CAS Hub]";
 
         public static bool IsActive => SessionState.GetBool(ActiveKey, false);
 
@@ -68,6 +78,48 @@ namespace PSV.Installer.Wizard
             SessionState.SetBool(ActiveKey, false);
             SessionState.SetInt(IssuedKey, -1);
             SessionState.SetFloat(DeadlineKey, 0f);
+            SessionState.SetBool(CompletedKey, false);
+            ClearFailure();
+        }
+
+        /// <summary>True once <see cref="MarkCompleted"/> has run for the current batch and hasn't
+        /// been cleared yet (by Cancel/Continue, or a fresh <see cref="StartAll"/>). Checked FIRST in
+        /// <c>ProgressScreen.OnEnter</c> — independent of <see cref="IsActive"/> — so a domain reload
+        /// that lands back on the Progress screen after the whole queue finished still shows the
+        /// completion panel instead of falling through to the "nothing to show" redirect.</summary>
+        public static bool IsCompleted => SessionState.GetBool(CompletedKey, false);
+
+        /// <summary>Marks the batch as finished. Deliberately does NOT also call <see cref="Clear"/> —
+        /// that's deferred to the completion screen's Cancel/Continue so the completed state survives
+        /// any reload that happens before the user acts on it.</summary>
+        public static void MarkCompleted() => SessionState.SetBool(CompletedKey, true);
+
+        /// <summary>Persists which step failed and why, so the failure can be redrawn after a domain
+        /// reload (see <see cref="TryGetFailure"/>). A step that fails synchronously (apply failed, or
+        /// nothing landed in the manifest) never arms <see cref="StepDeadline"/>, so the watchdog can't
+        /// be relied on to detect this case after a reload — this persisted pair is the source of truth
+        /// instead.</summary>
+        public static void MarkFailed(string id, string detail)
+        {
+            SessionState.SetString(FailedIdKey, id ?? string.Empty);
+            SessionState.SetString(FailedDetailKey, detail ?? string.Empty);
+        }
+
+        /// <summary>Clears a persisted failure (on Retry, or via <see cref="Clear"/>) without touching
+        /// the rest of the run's state.</summary>
+        public static void ClearFailure()
+        {
+            SessionState.EraseString(FailedIdKey);
+            SessionState.EraseString(FailedDetailKey);
+        }
+
+        /// <summary>True (with the failed step id/detail) when a step is currently in the persisted
+        /// failed state.</summary>
+        public static bool TryGetFailure(out string id, out string detail)
+        {
+            id = SessionState.GetString(FailedIdKey, string.Empty);
+            detail = SessionState.GetString(FailedDetailKey, string.Empty);
+            return !string.IsNullOrEmpty(id);
         }
 
         /// <summary>
@@ -124,13 +176,13 @@ namespace PSV.Installer.Wizard
                     // doesn't have to click again.
                     SessionState.SetBool(ResumeKey, true);
                     PSV.Installer.Bootstrap.EnsureMetadata();
-                    EditorUtility.DisplayDialog("PSV Installer",
+                    EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                         "The package catalog is installing. Unity will reload when it's ready and the " +
                         "installer will continue automatically — no need to click again.", "OK");
                 }
                 else // Unreadable
                 {
-                    EditorUtility.DisplayDialog("PSV Installer",
+                    EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                         "The package catalog is installed but couldn't be read:\n" +
                         (load.Error ?? "unknown error") +
                         "\n\nReinstall com.psvgamestudio.installer.metadata.", "OK");
@@ -140,21 +192,26 @@ namespace PSV.Installer.Wizard
 
             var report = ProjectScanner.Scan(load.Catalog);
             var plan = MigrationPlanner.Plan(
-                load.Catalog, report, new IdSetSelection(ComponentStatusProvider.DefaultIds), InstallMethodState.Get(), out var warnings);
+                load.Catalog, report, new IdSetSelection(ComponentStatusProvider.DefaultIds), InstallMethod.Upm, out var warnings);
 
             if (plan.Count == 0)
             {
                 Clear();
-                InstallerWizardWindow.IntroDone = true; // nothing to install → intro is complete
+                // IntroDone is deferred to DoneScreen.OnEnter — setting it here (before routing to
+                // "done") would hide the step-3 stepper on the very screen meant to show it, since
+                // UpdateTabBar's showStepper check is `step.HasValue && !IntroDone`.
                 router.GoTo("done");
                 return;
             }
 
-            if (!EditorUtility.DisplayDialog("PSV Installer",
+            if (!EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
                     BuildSummary(plan, warnings), "Install all", "Cancel"))
                 return; // cancelled → stay on the first screen; intro not marked done
 
-            InstallerWizardWindow.IntroDone = true; // committed to install → past the intro
+            // IntroDone is deferred to DoneScreen.OnEnter (see comment above) — committing to install
+            // here must NOT flip it yet, or the stepper disappears for the rest of the flow
+            // (Progress → Setup/Configure → Done) and Cancel-from-Progress would strand Ready tab-less.
+            Clear(); // reset any stale Completed/Failed/IssuedIndex from a previous run before starting fresh
             SessionState.SetBool(ActiveKey, true);
             IssuedIndex = -1;
             router.GoTo("progress");
@@ -170,15 +227,14 @@ namespace PSV.Installer.Wizard
             if (load.Status != CatalogLoadStatus.Ok)
                 return new ApplyResult(false, 0, new[] { "Catalog unavailable." });
 
-            var method = InstallMethodState.Get();
             var report = ProjectScanner.Scan(load.Catalog);
-            var plan = MigrationPlanner.Plan(load.Catalog, report, new IdSetSelection(new[] { id }), method, out _);
+            var plan = MigrationPlanner.Plan(load.Catalog, report, new IdSetSelection(new[] { id }), InstallMethod.Upm, out _);
 
             // Diagnostic: a healthy install for a not-yet-present component must produce at least one
             // Add/AddGit action. An empty (or registry-only) plan here is the documented cause of the
             // auto-install "spinner forever" — the manifest never gains the dependency, so the poll
             // waits on a package that can never resolve. Log the plan so a stall is explainable.
-            Debug.Log($"{LogPrefix} InstallOne('{id}', method={method}): plan has {plan.Count} action(s) — " +
+            Debug.Log($"{LogPrefix} InstallOne('{id}'): plan has {plan.Count} action(s) — " +
                       DescribePlan(plan));
 
             var result = new MigrationRunner().Apply(plan);
@@ -213,7 +269,7 @@ namespace PSV.Installer.Wizard
         private static string BuildSummary(IReadOnlyList<MigrationAction> plan, IReadOnlyList<PlannerWarning> warnings)
         {
             var sb = new StringBuilder();
-            sb.AppendLine("Install all default components (CAS SDK, Tenjin, Firebase Analytics)?");
+            sb.AppendLine("Install all default components (CAS SDK, Tenjin, Firebase Analytics, EDM4U)?");
             sb.AppendLine("They will be installed one at a time.");
             sb.AppendLine();
 

@@ -111,9 +111,9 @@ namespace PSV.Installer.Catalog
                 UnityEditor.EditorApplication.update -= Poll;
 
                 if (request.Status == StatusCode.Success)
-                    UnityEngine.Debug.Log($"[PSV Installer] {label} installed: {request.Result?.packageId}");
+                    UnityEngine.Debug.Log($"[CAS Hub] {label} installed: {request.Result?.packageId}");
                 else
-                    UnityEngine.Debug.LogWarning($"[PSV Installer] {label} install failed: {request.Error?.message}");
+                    UnityEngine.Debug.LogWarning($"[CAS Hub] {label} install failed: {request.Error?.message}");
             }
 
             UnityEditor.EditorApplication.update += Poll;
