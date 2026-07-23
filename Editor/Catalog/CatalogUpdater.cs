@@ -111,9 +111,25 @@ namespace PSV.Installer.Catalog
                 UnityEditor.EditorApplication.update -= Poll;
 
                 if (request.Status == StatusCode.Success)
+                {
                     UnityEngine.Debug.Log($"[CAS Hub] {label} installed: {request.Result?.packageId}");
+                }
                 else
-                    UnityEngine.Debug.LogWarning($"[CAS Hub] {label} install failed: {request.Error?.message}");
+                {
+                    // Metadata installs (labels "Metadata" / "Metadata (git)") get the same
+                    // transient self-heal as the synchronous Client.Add throw in
+                    // MetadataAutoInstall — an async install failure due to a busy Package
+                    // Manager must not strand metadata (and the wizard auto-open) for the rest
+                    // of the session.
+                    var message = request.Error?.message;
+                    var isMetadata = label != null &&
+                                      label.StartsWith("Metadata", StringComparison.Ordinal);
+                    var transient = isMetadata && PSV.Installer.InstallRetryPolicy.IsTransient(message);
+                    if (transient) PSV.Installer.MetadataInstallRetry.Arm();
+
+                    UnityEngine.Debug.LogWarning($"[CAS Hub] {label} install failed: {message}" +
+                        (transient ? " — retrying shortly" : ""));
+                }
             }
 
             UnityEditor.EditorApplication.update += Poll;

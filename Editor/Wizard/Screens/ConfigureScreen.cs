@@ -1,10 +1,20 @@
 using System.Collections.Generic;
+using System.IO;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace PSV.Installer.Wizard
 {
+    /// <summary>Action a Configuration table cell performs when clicked (see <see cref="ConfigureScreen.ResolveCellAction"/>).</summary>
+    internal enum ConfigCellAction
+    {
+        None,
+        OpenCasSettings,
+        PingFirebaseFile,
+        LocateFirebaseFile,
+    }
+
     /// <summary>
     /// Configuration — a read-only, per-platform (Android / iOS) detection table for the INSTALLED
     /// components. Each cell shows whether the required config is present; nothing here writes to
@@ -319,7 +329,10 @@ namespace PSV.Installer.Wizard
             openConsole.style.marginRight = 8;
             buttons.Add(openConsole);
 
-            var locate = ActionButton("Locate file…", LocateFirebaseConfigFile);
+            // The panel isn't per-platform, so it keeps the existing behaviour of locating for the
+            // active build target — the table's own Firebase cells (per-platform) call this with the
+            // specific platform for that column instead.
+            var locate = ActionButton("Locate file…", () => LocateFirebaseConfigFile(PlatformDetect.ActivePlatform()));
             buttons.Add(locate);
 
             card.Add(buttons);
@@ -328,10 +341,11 @@ namespace PSV.Installer.Wizard
 
         // "Locate file…" — user picks google-services.json / GoogleService-Info.plist from anywhere on
         // disk; validated by name and copied into Assets/. Errors surface in a dialog; success re-runs
-        // the same refresh path as the Refresh button so the table/panels reflect the new file.
-        private void LocateFirebaseConfigFile()
+        // the same refresh path as the Refresh button so the table/panels reflect the new file. The
+        // dialog title names the expected file for the given platform.
+        private void LocateFirebaseConfigFile(string platform)
         {
-            var path = EditorUtility.OpenFilePanel("Select google-services.json", "", "");
+            var path = EditorUtility.OpenFilePanel("Select " + FirebaseFileName(platform), "", "");
             if (string.IsNullOrEmpty(path)) return; // user cancelled the panel
 
             var err = FirebaseConfigFile.ValidateAndCopy(path, "Assets");
@@ -376,7 +390,65 @@ namespace PSV.Installer.Wizard
 
         // ── Table rows ─────────────────────────────────────────────────────────
 
-        private static VisualElement BuildRow(SetupModel.Row row, bool alt)
+        // Pure: which action (if any) a Configuration table cell performs when clicked. CAS/Tenjin
+        // cells always open CAS's native settings (there's nothing else to do there regardless of
+        // configured state); the Firebase cell either pings the existing config file or opens the
+        // locate dialog, depending on whether it was found.
+        internal static ConfigCellAction ResolveCellAction(string rowId, bool configured)
+        {
+            if (rowId == CasId || rowId == TenjinId) return ConfigCellAction.OpenCasSettings;
+            if (rowId == FirebaseId) return configured ? ConfigCellAction.PingFirebaseFile : ConfigCellAction.LocateFirebaseFile;
+            return ConfigCellAction.None;
+        }
+
+        private const string AndroidFirebaseFileName = "google-services.json";
+        private const string IosFirebaseFileName = "GoogleService-Info.plist";
+
+        private static string FirebaseFileName(string platform) =>
+            platform == "iOS" ? IosFirebaseFileName : AndroidFirebaseFileName;
+
+        // Finds a Firebase config file by exact file name anywhere under Assets/ and pings it in the
+        // Project window (first match wins — mirrors SetupChecker.CheckAssetFile's own lookup, which
+        // isn't reusable here as it takes a whole ConfigRequirement rather than a bare file name).
+        private void PingFirebaseConfigFile(string platform)
+        {
+            var fileName = FirebaseFileName(platform);
+            try
+            {
+                var matches = Directory.GetFiles(Application.dataPath, fileName, SearchOption.AllDirectories);
+                if (matches.Length == 0) return;
+
+                var rel = "Assets" + matches[0].Substring(Application.dataPath.Length).Replace('\\', '/');
+                var asset = AssetDatabase.LoadMainAssetAtPath(rel);
+                if (asset == null) return;
+
+                Selection.activeObject = asset;
+                EditorGUIUtility.PingObject(asset);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[CAS Hub] Could not locate {fileName}: {e.Message}");
+            }
+        }
+
+        // Runs the resolved cell action, if any.
+        private void RunCellAction(ConfigCellAction action, string platform)
+        {
+            switch (action)
+            {
+                case ConfigCellAction.OpenCasSettings:
+                    CasNativeSettings.Open(platform);
+                    break;
+                case ConfigCellAction.PingFirebaseFile:
+                    PingFirebaseConfigFile(platform);
+                    break;
+                case ConfigCellAction.LocateFirebaseFile:
+                    LocateFirebaseConfigFile(platform);
+                    break;
+            }
+        }
+
+        private VisualElement BuildRow(SetupModel.Row row, bool alt)
         {
             var el = new VisualElement();
             el.AddToClassList("cas-setup-row");
@@ -406,8 +478,8 @@ namespace PSV.Installer.Wizard
             }
             else
             {
-                grid.Add(BuildPlatformColumn(row.Android));
-                grid.Add(BuildPlatformColumn(row.IOS));
+                grid.Add(BuildPlatformColumn(row.Id, row.Android, "Android"));
+                grid.Add(BuildPlatformColumn(row.Id, row.IOS, "iOS"));
             }
             el.Add(grid);
             return el;
@@ -418,7 +490,7 @@ namespace PSV.Installer.Wizard
         // FieldSupported && key set → green "configured"; FieldSupported && empty → yellow "not
         // configured" (an active, blocking requirement — see ApplyTenjinReadiness/BuildTenjinPanel);
         // !FieldSupported (older CAS) → grey informational text, never a warning.
-        private static VisualElement BuildTenjinColumn(string platform)
+        private VisualElement BuildTenjinColumn(string platform)
         {
             var col = new VisualElement();
             col.AddToClassList("cas-setup-col-plat");
@@ -449,11 +521,18 @@ namespace PSV.Installer.Wizard
             txt.AddToClassList("cas-status--" + tone);
             line.Add(txt);
 
+            // FieldSupported=true always resolves to OpenCasSettings (the Tenjin key lives in CAS
+            // settings) — the "Handled on our end" case above already returned and stays non-clickable.
+            // `platform` is this call's own parameter (not a shared loop variable), so it's safe to
+            // capture directly.
+            line.AddToClassList("cas-setup-cell--click");
+            line.RegisterCallback<ClickEvent>(_ => RunCellAction(ConfigCellAction.OpenCasSettings, platform));
+
             col.Add(line);
             return col;
         }
 
-        private static VisualElement BuildPlatformColumn(List<SetupModel.Cell> cells)
+        private VisualElement BuildPlatformColumn(string rowId, List<SetupModel.Cell> cells, string platform)
         {
             var col = new VisualElement();
             col.AddToClassList("cas-setup-col-plat");
@@ -467,14 +546,15 @@ namespace PSV.Installer.Wizard
             }
 
             foreach (var cell in cells)
-                col.Add(BuildCell(cell));
+                col.Add(BuildCell(rowId, platform, cell));
             return col;
         }
 
         // Read-only: green "✓ <label>" when Configured, otherwise a yellow "⚠ <label>" warning —
         // Missing/NotConfigured/NotApplicable all need the same action (finish it in the plugin's
-        // own settings), so the table doesn't distinguish them further.
-        private static VisualElement BuildCell(SetupModel.Cell cell)
+        // own settings), so the table doesn't distinguish them further. When ResolveCellAction finds
+        // an action for this row, the whole cell line becomes clickable.
+        private VisualElement BuildCell(string rowId, string platform, SetupModel.Cell cell)
         {
             var line = new VisualElement();
             line.AddToClassList("cas-setup-cell");
@@ -493,6 +573,15 @@ namespace PSV.Installer.Wizard
             txt.AddToClassList("cas-setup-cell__txt");
             txt.AddToClassList("cas-status--" + tone);
             line.Add(txt);
+
+            var action = ResolveCellAction(rowId, ok);
+            if (action != ConfigCellAction.None)
+            {
+                // `rowId`/`platform` are this call's own parameters (not shared loop variables), so
+                // capturing them directly in the closure is safe.
+                line.AddToClassList("cas-setup-cell--click");
+                line.RegisterCallback<ClickEvent>(_ => RunCellAction(action, platform));
+            }
 
             return line;
         }

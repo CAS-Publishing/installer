@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>CAS Hub Installer — Wizard Flow</title>
+  <meta name="viewport" content="width=1600, initial-scale=1" />
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: #1a1a1a;
+      font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif;
+      color: #e0e0e0;
+    }
+    @keyframes cas-spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    /* "Unity Editor" backdrop hint */
+    .unity-bg {
+      background:
+        radial-gradient(1200px 600px at 30% 0%, rgba(255,255,255,0.04), transparent 70%),
+        radial-gradient(900px 600px at 90% 100%, rgba(76,126,255,0.05), transparent 70%),
+        #1a1a1a;
+    }
+  </style>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="design-canvas.jsx"></script>
+  <script type="text/babel" src="icons.jsx"></script>
+  <script type="text/babel" src="chrome.jsx"></script>
+  <script type="text/babel" src="screens.jsx"></script>
+</head>
+<body class="unity-bg">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState } = React;
+
+    const ART_W = 500;   // a hair wider than the window itself (480) for breathing room
+    const ART_H = 580;
+
+    const wrap = (Screen) => (
+      <div style={{
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 10,
+        boxSizing: 'border-box',
+      }}>
+        <Screen />
+      </div>
+    );
+
+    const screens = [
+      { id: 'welcome',     label: '1 · Welcome',             C: Screen1Welcome },
+      { id: 'integration', label: '2 · Integration mode',    C: Screen2Integration },
+      { id: 'components',  label: '3 · Components Overview', C: Screen3Components },
+      { id: 'hub',         label: '4 · Hub Actions',         C: Screen4HubActions },
+      { id: 'progress',    label: '5 · Installation Progress', C: Screen5Progress },
+      { id: 'done',        label: '6 · All Done',            C: Screen6Done },
+      { id: 'update',      label: '7 · Update Installer',    C: Screen7Update },
+      { id: 'settings',    label: '8 · CAS Settings Redirect', C: Screen8Settings },
+    ];
+
+    function App() {
+      return (
+        <DesignCanvas
+          title="CAS Hub Installer"
+          subtitle="EditorWindow flow — 8 screens · Unity 2022+ dark theme"
+        >
+          <DCSection id="wizard" title="Installer Wizard" defaultColumns={4}>
+            {screens.map(s => (
+              <DCArtboard
+                key={s.id}
+                id={s.id}
+                label={s.label}
+                width={ART_W}
+                height={ART_H}
+                background="#262626"
+              >
+                {wrap(s.C)}
+              </DCArtboard>
+            ))}
+          </DCSection>
+        </DesignCanvas>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

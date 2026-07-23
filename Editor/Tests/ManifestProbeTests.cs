@@ -1,5 +1,6 @@
 using System.IO;
 using NUnit.Framework;
+using Newtonsoft.Json.Linq;
 using PSV.Installer.Scanner;
 
 namespace PSV.Installer.Tests
@@ -59,6 +60,40 @@ namespace PSV.Installer.Tests
             var data = ManifestProbe.ReadFrom(Path.Combine(_dir, "nope.json"));
             Assert.IsFalse(data.Readable);
             Assert.IsNotEmpty(data.ReadError);
+        }
+
+        private static ManifestData FromJson(string json) => ManifestData.FromJObject(JObject.Parse(json));
+
+        [Test]
+        public void HasScopeCovering_ExactId_True()
+        {
+            var m = FromJson(@"{ ""dependencies"": {}, ""scopedRegistries"": [
+                { ""name"": ""psv"", ""url"": ""https://npm.psvgamestudio.com/"", ""scopes"": [""com.psvgamestudio.analytics""] } ] }");
+            Assert.IsTrue(m.HasScopeCovering("com.psvgamestudio.analytics"));
+        }
+
+        [Test]
+        public void HasScopeCovering_PrefixScope_True()
+        {
+            var m = FromJson(@"{ ""dependencies"": {}, ""scopedRegistries"": [
+                { ""name"": ""psv"", ""url"": ""https://npm.psvgamestudio.com/"", ""scopes"": [""com.psvgamestudio""] } ] }");
+            Assert.IsTrue(m.HasScopeCovering("com.psvgamestudio.analytics"));
+        }
+
+        [Test]
+        public void HasScopeCovering_UnrelatedPrefix_False()
+        {
+            // "com.psv" scope must NOT cover "com.psvgamestudio.analytics" (not a dot-boundary prefix).
+            var m = FromJson(@"{ ""dependencies"": {}, ""scopedRegistries"": [
+                { ""name"": ""psv"", ""url"": ""https://npm.psvgamestudio.com/"", ""scopes"": [""com.psv""] } ] }");
+            Assert.IsFalse(m.HasScopeCovering("com.psvgamestudio.analytics"));
+        }
+
+        [Test]
+        public void HasScopeCovering_NoRegistries_False()
+        {
+            var m = FromJson(@"{ ""dependencies"": {} }");
+            Assert.IsFalse(m.HasScopeCovering("com.psvgamestudio.analytics"));
         }
     }
 }

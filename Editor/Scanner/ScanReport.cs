@@ -56,6 +56,12 @@ namespace PSV.Installer.Scanner
         /// any manifest id AND legacy asset paths are both present.
         /// </summary>
         Conflict,
+
+        /// <summary>
+        /// In manifest under the canonical id (semver), but NO registered scoped-registry scope
+        /// covers it — Unity cannot resolve it ("Package cannot be found"). Fix = add the scope.
+        /// </summary>
+        ScopeMissing,
     }
 
     /// <summary>

@@ -12,12 +12,25 @@ namespace PSV.Installer.Wizard
     /// </summary>
     internal static class CasNativeSettings
     {
+        /// <summary>Menu-path candidates for a platform: CAS 4.7+ renamed the items to
+        /// "Android Settings..." — that's the common case for modern CAS projects, so try it
+        /// first, then fall back to the pre-4.7 plain "Android Settings" name.</summary>
+        internal static string[] MenuCandidates(string platform)
+        {
+            var name = platform == "iOS" ? "iOS Settings" : "Android Settings";
+            return new[]
+            {
+                "Assets/CleverAdsSolutions/" + name + "...",
+                "Assets/CleverAdsSolutions/" + name,
+            };
+        }
+
         public static void Open(string platform)
         {
             try
             {
-                var menu = "Assets/CleverAdsSolutions/" + (platform == "iOS" ? "iOS Settings" : "Android Settings");
-                if (EditorApplication.ExecuteMenuItem(menu)) return;
+                foreach (var menu in MenuCandidates(platform))
+                    if (UnityEditor.Menu.GetEnabled(menu) && EditorApplication.ExecuteMenuItem(menu)) return;
 
                 var asset = AssetDatabase.LoadMainAssetAtPath(
                     "Assets/CleverAdsSolutions/Resources/CASSettings" + platform + ".asset");

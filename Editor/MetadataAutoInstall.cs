@@ -64,8 +64,9 @@ namespace PSV.Installer
                     // on the next domain reload.
                     var transient = InstallRetryPolicy.IsTransient(e.Message);
                     if (!transient) SessionState.SetBool(InstallAttemptedKey, true);
+                    if (transient) MetadataInstallRetry.Arm();
                     Debug.LogWarning($"{LogPrefix} Metadata git Client.Add failed " +
-                                     $"({(transient ? "transient — will retry after reload" : "terminal — throttled until restart")}): {e.Message}");
+                                     $"({(transient ? "transient — retrying shortly" : "terminal — throttled until restart")}): {e.Message}");
                 }
                 return;
             }
@@ -97,8 +98,9 @@ namespace PSV.Installer
                         // burn the session's one install attempt.
                         var transient = InstallRetryPolicy.IsTransient(e.Message);
                         if (!transient) SessionState.SetBool(InstallAttemptedKey, true);
+                        if (transient) MetadataInstallRetry.Arm();
                         Debug.LogWarning($"{LogPrefix} Client.Add failed " +
-                                         $"({(transient ? "transient — will retry after reload" : "terminal — throttled until restart")}): {e.Message}");
+                                         $"({(transient ? "transient — retrying shortly" : "terminal — throttled until restart")}): {e.Message}");
                     }
                 },
                 onFailure: err =>

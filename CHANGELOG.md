@@ -2,6 +2,44 @@
 
 All notable changes to this package will be documented in this file.
 
+## [0.0.1-preview.38] - 2026-07-23
+
+- **Scoped registries are emitted for catalog packages when the installer is installed via git URL.**
+  When the installer itself is a git dependency, it previously failed to emit the `com.psvgamestudio`
+  and `com.google` scoped registries to the project manifest, leaving catalog packages unreachable
+  ("Package cannot be found"). The installer now detects a git install, ensures those registries are
+  present (in addition to the git-based component fetch), and the install flow succeeds.
+- **New "Needs Registry" self-heal state for already-broken manifests.** If a project was already
+  broken by a missing registry (left incomplete by an old installer run), the **Refresh** button and
+  the wizard's manual install now detect the broken state, offer a **Fix** action, and emit the
+  registries — recovering a project without an editor restart.
+- **Compound Firebase legacy migration.** Projects with `com.psv.firebase.base` (a monolithic legacy
+  adapter) can now migrate to the native Firebase modules (`com.google.firebase.*`) plus per-platform
+  adapters. The migration removes `com.psv.unity.edm` when present, and both entry points (Main
+  Components and Additional) offer the new Firebase adapters.
+- **Adapters require `com.psv.core`.** Firebase and other platform adapters are offered only when
+  `com.psv.core` is already installed (a presence check — the installer never installs core itself).
+  Components with unmet requirements show a "Requires com.psv.core" label.
+- **CAS native settings open on both pre-4.7 and 4.7+ menu names.** Menu items for Android/iOS platform
+  settings work whether the CAS plugin exposes them as "Android Settings" (pre-4.7) or "Android Settings..."
+  (4.7+), ensuring the Configuration tab's quick-open buttons work across all CAS versions.
+- **Component rows refresh immediately after Install/Update/Fix/Migrate/Remove.** Changes to the component
+  state (status, version, action buttons) are now visible without a manual **Refresh** click, improving
+  the installer's responsiveness during multi-step installs and fixes.
+- **Transient metadata-install failures now retry in-session.** When the first install collides with a
+  busy Package Manager (typical during a fresh project import), the installer retries automatically
+  instead of waiting for a domain reload that may never come — the Hub auto-opens on first install
+  without an editor restart.
+- **New top-level "CAS Hub → Open Hub" main-menu entry.** Testers expected the Hub in the main menu bar
+  alongside Assets/Edit/Tools, not nested under Assets/CleverAdsSolutions (which reads as the ad-SDK settings).
+  The old `Assets → CleverAdsSolutions → Hub` items remain.
+- **Configuration table statuses are clickable.** CAS/Tenjin cells open the CAS settings window, and
+  Firebase cells ping the config file (or open the locate dialog when it's missing) — no more hunting
+  for the right button below the table.
+- Pairs with installer.metadata ≥ 0.0.2-preview.27 (adds Firebase legacy migration entries and
+  per-platform adapter routing).
+- See docs/superpowers/specs/2026-07-23-firebase-migration-and-registry-fix-design.md for the design.
+
 ## [0.0.1-preview.37] - 2026-07-16
 
 - **Rebranded to CAS.AI Publishing Hub.** Window title, dialogs, and log prefix now use the

@@ -153,7 +153,14 @@ namespace PSV.Installer.Wizard
                         : c.OutsideUpm
                             ? WizardActions.MigrateExternal(c.Id, c.DisplayName)
                             : WizardActions.Apply(c.Id, c.DisplayName);
-                    if (changed) Rebuild();
+                    if (changed)
+                    {
+                        // The provider's session cache assumed installs always domain-reload before
+                        // the next read — not true for pure manifest writes, so drop it explicitly
+                        // or the row keeps its pre-action state until a manual Refresh.
+                        ComponentStatusProvider.InvalidateCache();
+                        Rebuild();
+                    }
                 })
                 { text = vm.ActionText };
                 btn.AddToClassList("cas-btn");
@@ -183,7 +190,10 @@ namespace PSV.Installer.Wizard
                 // Target the id actually in manifest.json (legacy id when present under one),
                 // else removal silently no-ops — the "delete does nothing" bug.
                 if (WizardActions.Remove(c.InstalledId, c.DisplayName))
+                {
+                    ComponentStatusProvider.InvalidateCache();
                     Rebuild();
+                }
             })
             { text = "Remove SDK" };
             remove.AddToClassList("cas-btn");

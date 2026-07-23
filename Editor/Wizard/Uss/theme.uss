@@ -193,6 +193,14 @@
 .cas-setup-cell { flex-direction: row; align-items: flex-start; margin-bottom: 3px; }
 .cas-setup-cell__txt { font-size: 11px; white-space: normal; flex-grow: 1; margin-left: 6px; }
 .cas-setup-cell--link:hover .cas-setup-cell__txt { color: #FFFFFF; }
+/* Clickable status cells: pill-shaped hover (padding + radius, left margin compensated so the
+   text column stays aligned with non-clickable cells). USS `cursor` does NOT inherit — the
+   pointer usually sits over the child label/dot, so the rule must target the children too. */
+.cas-setup-cell--click { cursor: link; padding: 2px 6px 2px 6px; margin-left: -6px; border-radius: 4px; }
+.cas-setup-cell--click .cas-setup-cell__txt { cursor: link; }
+.cas-setup-cell--click .cas-dot { cursor: link; }
+.cas-setup-cell--click:hover { background-color: rgba(255, 255, 255, 0.07); }
+.cas-setup-cell--click:hover .cas-setup-cell__txt { color: #FFFFFF; }
 .cas-setup-cell__input { margin-top: 3px; min-width: 150px; }
 .cas-muted-cell { color: #6E6E6E; font-size: 11px; }
 /* Base .cas-setup-summary (layout-only) was never applied — only the tone modifiers below are

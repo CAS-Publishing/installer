@@ -53,6 +53,28 @@ namespace PSV.Installer.Catalog
         [JsonProperty("minVersion")]         public string MinVersion;
         [JsonProperty("recommendedVersion")] public string RecommendedVersion;
 
+        /// <summary>
+        /// Optional scoped-registry scopes to register when installing this package. Absent →
+        /// the planner defaults to the package id itself (an exact-id scope is always correct).
+        /// </summary>
+        [JsonProperty("scopes")]             public List<string> Scopes;
+
+        /// <summary>
+        /// Optional package ids that must ALREADY be present in the project (manifest dependency
+        /// or embedded under Packages/) before this package is offered. Presence check ONLY — the
+        /// installer never installs, resolves, or registers a scope for a required id
+        /// (e.g. com.psv.core is git-distributed and not on the registry).
+        /// </summary>
+        [JsonProperty("requires")]           public List<string> Requires;
+
+        /// <summary>
+        /// Optional loaded-type markers (matched like <see cref="ExternalModule.AssetMarkers"/>)
+        /// gating this package during a compound legacy migration: absent → always installed with
+        /// its split group; present → installed only when a marker matches a loaded identifier
+        /// (e.g. the remoteconfig adapter only when Firebase.RemoteConfig types are loaded).
+        /// </summary>
+        [JsonProperty("detectMarkers")]      public List<string> DetectMarkers;
+
         /// <summary>Optional post-install configuration requirements (per platform), used to
         /// render the Setup readiness checklist. Absent → no config to verify.</summary>
         [JsonProperty("config")]             public List<ConfigRequirement> Config;

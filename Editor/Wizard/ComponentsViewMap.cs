@@ -71,10 +71,23 @@ namespace PSV.Installer.Wizard
                     break;
 
                 case "Installed (manual)":
-                case "Needs migration":
                 case "Installed (git)":
                     vm.StatusText = "Manual install";
                     vm.ActionText = "Connect to Hub";
+                    vm.Action = RowAction.ConnectToHub;
+                    break;
+
+                case "Needs migration":
+                    // Split out from the "manual → Connect to Hub" case above: every producer of
+                    // this StatusText (PackageState.LegacyUpm/LegacyAssets in
+                    // ComponentStatusProvider.FromPackage, and the promoted split-group case in
+                    // ComponentStatusProvider.PromoteLegacySplit) already sets ComponentStatus.ActionText
+                    // to "Migrate" — so it's safe to surface that label directly here instead of the
+                    // generic "Connect to Hub". Dispatch (RowAction.ConnectToHub) is unchanged: it
+                    // still falls through to WizardActions.Apply, which is what routes a promoted
+                    // Firebase/adapter row into the compound migration via LegacySplitRouting.
+                    vm.StatusText = "Manual install";
+                    vm.ActionText = status.ActionText ?? "Migrate";
                     vm.Action = RowAction.ConnectToHub;
                     break;
 

@@ -43,6 +43,16 @@ namespace PSV.Installer.Wizard
             }
 
             var report = ProjectScanner.Scan(load.Catalog);
+
+            // Compound legacy migration takes over BOTH entry points: installing an adapter or the
+            // Firebase row while com.psv.firebase.base is still in the manifest must migrate the
+            // whole family at once — a single-component plan would either duplicate the SDK or be
+            // stripped by the partial-split backstop (the "Fix does nothing" loop).
+            var manifest = ManifestProbe.Read();
+            var splitGroup = LegacySplitRouting.FindGroupFor(report, manifest.Dependencies, componentId);
+            if (splitGroup != null)
+                return MigrateFirebaseLegacy(splitGroup, displayName, load.Catalog, manifest);
+
             var plan = MigrationPlanner.Plan(load.Catalog, report, new SingleSelection(componentId), InstallMethod.Upm, out var warnings);
 
             if (plan.Count == 0)
@@ -71,6 +81,57 @@ namespace PSV.Installer.Wizard
             }
 
             return true; // re-scan regardless: reflect the real resulting state
+        }
+
+        /// <summary>
+        /// Runs the compound legacy-Firebase migration (see <see cref="FirebaseMigrationPlan"/>):
+        /// one confirm dialog listing removes + registry + installs, then a single
+        /// MigrationRunner apply. Returns true when anything was attempted (caller re-scans).
+        /// </summary>
+        internal static bool MigrateFirebaseLegacy(
+            Scanner.MigrationGroup group, string displayName,
+            Catalog.PackageCatalog catalog, Scanner.ManifestData manifest)
+        {
+            System.Func<string, bool> embedded = id =>
+                System.IO.Directory.Exists(System.IO.Path.Combine(
+                    System.IO.Path.GetFullPath(System.IO.Path.Combine(UnityEngine.Application.dataPath, "..")),
+                    "Packages", id));
+
+            var built = FirebaseMigrationPlan.Build(
+                catalog, group, manifest.Dependencies,
+                AssetInstallProbe.CollectLoadedIdentifiers(), embedded);
+
+            if (built.Actions.Count == 0)
+            {
+                // Two distinct empty-plan causes: nothing to do (the legacy id already isn't in the
+                // manifest — fine, no-op), or an aborted migration (the legacy id IS in the manifest,
+                // but the catalog has no external record linking it — a stale catalog would strip
+                // Firebase with no replacement, so FirebaseMigrationPlan aborts and warns instead).
+                var message = built.Warnings.Count > 0
+                    ? $"Cannot migrate {displayName}:\n• " + string.Join("\n• ", built.Warnings) +
+                      "\n\nThe installed metadata catalog doesn't know how to replace this legacy " +
+                      "package yet. Refresh the catalog (or update the metadata package) and try again."
+                    : $"Nothing to migrate for {displayName} — {group.LegacyId} is not in manifest.json.";
+                EditorUtility.DisplayDialog("CAS.AI Publishing Hub", message, "OK");
+                return false;
+            }
+
+            var warnings = new List<PlannerWarning>();
+            foreach (var w in built.Warnings) warnings.Add(new PlannerWarning(group.LegacyId, w));
+
+            if (!EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
+                    BuildSummary(displayName, built.Actions, warnings), "Apply", "Cancel"))
+                return false;
+
+            var result = new MigrationRunner().Apply(built.Actions);
+            if (result.Success)
+                Debug.Log($"[CAS Hub] Migrated {group.LegacyId} → native Firebase + adapters " +
+                          $"({result.ExecutedCount} action(s)). Unity will resolve packages now.");
+            else
+                EditorUtility.DisplayDialog("CAS.AI Publishing Hub",
+                    $"Migration failed for {displayName}:\n• " + string.Join("\n• ", result.Failures) +
+                    "\n\nNo backup is kept — use 'git status' / 'git restore .' to inspect or revert.", "OK");
+            return true;
         }
 
         /// <summary>
@@ -383,31 +444,12 @@ namespace PSV.Installer.Wizard
         /// <summary>
         /// Pure core of <see cref="ResolveInstallSet(ExternalRecord,string)"/>: resolves the install
         /// set against an explicit <paramref name="loadedIdentifiers"/> set (no reflection), so it is
-        /// unit-testable. See the public overload for the contract.
+        /// unit-testable. See the public overload for the contract. Delegates to
+        /// <see cref="ExternalInstallSet.Resolve"/> in the core assembly.
         /// </summary>
         internal static List<AddPackage> ResolveInstallSet(
             ExternalRecord rec, string baseVersion, ICollection<string> loadedIdentifiers)
-        {
-            var installs = new List<AddPackage>();
-
-            if (rec.Modules != null && rec.Modules.Count > 0 && loadedIdentifiers != null)
-            {
-                var seen = new HashSet<string>();
-                foreach (var m in rec.Modules)
-                {
-                    if (m == null || string.IsNullOrEmpty(m.Id)) continue;
-                    if (!AssetInstallProbe.IsPresentInIdentifiers(loadedIdentifiers, m.AssetMarkers)) continue;
-                    if (!seen.Add(m.Id)) continue;
-                    var v = !string.IsNullOrEmpty(m.RecommendedVersion) ? m.RecommendedVersion : baseVersion;
-                    installs.Add(new AddPackage(m.Id, v));
-                }
-            }
-
-            if (installs.Count == 0)
-                installs.Add(new AddPackage(rec.Id, baseVersion)); // single-package or safety fallback
-
-            return installs;
-        }
+            => ExternalInstallSet.Resolve(rec, baseVersion, loadedIdentifiers);
 
         private static string ResolveRegistryUrl(PackageCatalog catalog, ExternalRecord rec)
         {

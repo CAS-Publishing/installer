@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using PSV.Installer.Catalog;
+using PSV.Installer.Migrator;
 using PSV.Installer.Scanner;
 
 namespace PSV.Installer.Wizard
@@ -188,7 +189,11 @@ namespace PSV.Installer.Wizard
                 if (pkgById.TryGetValue(d.Id, out var p))
                     statuses.Add(FromPackage(d, p));
                 else if (extById.TryGetValue(d.Id, out var e))
-                    statuses.Add(FromExternal(d, e));
+                {
+                    var s = FromExternal(d, e);
+                    PromoteLegacySplit(s, e, report);
+                    statuses.Add(s);
+                }
                 else
                     statuses.Add(NotInCatalog(d));
             }
@@ -258,6 +263,12 @@ namespace PSV.Installer.Wizard
             // catalog.External (catalog authoring mistake) — never list it twice.
             var seenIds = new HashSet<string>();
 
+            var manifest = ManifestProbe.Read();
+            System.Func<string, bool> embedded = id =>
+                System.IO.Directory.Exists(System.IO.Path.Combine(
+                    System.IO.Path.GetFullPath(System.IO.Path.Combine(UnityEngine.Application.dataPath, "..")),
+                    "Packages", id));
+
             if (load.Catalog.Packages != null)
                 foreach (var rec in load.Catalog.Packages)
                 {
@@ -265,7 +276,16 @@ namespace PSV.Installer.Wizard
                     if (defaultIds.Contains(rec.Id) || IsOwnPackage(rec.Id)) continue;
                     if (!seenIds.Add(rec.Id)) continue;
                     var d = ToDescriptor(rec.Id, rec.DisplayName, rec.Category, categoryNames);
-                    statuses.Add(pkgById.TryGetValue(rec.Id, out var p) ? FromPackage(d, p) : NotInCatalog(d));
+                    var status = pkgById.TryGetValue(rec.Id, out var p) ? FromPackage(d, p) : NotInCatalog(d);
+                    var missing = RequirementGate.FirstMissing(rec.Requires, manifest.Dependencies, embedded);
+                    if (missing != null && !status.Installed)
+                    {
+                        // Not offered without its prerequisite; if it's somehow already installed,
+                        // leave the real state visible instead of masking it.
+                        status.Tone = "grey"; status.StatusText = "Requires " + missing;
+                        status.ActionText = "—"; status.ActionVariant = "muted"; status.Actionable = false;
+                    }
+                    statuses.Add(status);
                 }
 
             if (load.Catalog.External != null)
@@ -275,7 +295,14 @@ namespace PSV.Installer.Wizard
                     if (defaultIds.Contains(rec.Id) || IsOwnPackage(rec.Id)) continue;
                     if (!seenIds.Add(rec.Id)) continue;
                     var d = ToDescriptor(rec.Id, rec.DisplayName, rec.Category, categoryNames);
-                    statuses.Add(extById.TryGetValue(rec.Id, out var e) ? FromExternal(d, e) : NotInCatalog(d));
+                    if (extById.TryGetValue(rec.Id, out var e))
+                    {
+                        var s = FromExternal(d, e);
+                        PromoteLegacySplit(s, e, report);
+                        statuses.Add(s);
+                    }
+                    else
+                        statuses.Add(NotInCatalog(d));
                 }
 
             return true;
@@ -347,6 +374,8 @@ namespace PSV.Installer.Wizard
                     s.Tone = "yellow"; s.StatusText = "Needs migration";  s.ActionText = "Migrate";   s.ActionVariant = "warn";    s.Actionable = true;  break;
                 case PackageState.Conflict:
                     s.Tone = "red";    s.StatusText = "Mixed install";    s.ActionText = "Fix";       s.ActionVariant = "warn";    s.Actionable = true;  break;
+                case PackageState.ScopeMissing:
+                    s.Tone = "yellow"; s.StatusText = "Needs registry"; s.ActionText = "Fix";      s.ActionVariant = "warn";    s.Actionable = true;  break;
                 case PackageState.NotInstalled:
                 default:
                     s.Tone = "red";    s.StatusText = "Not Installed";    s.ActionText = "Install";   s.ActionVariant = "primary"; s.Actionable = true;  break;
@@ -400,6 +429,36 @@ namespace PSV.Installer.Wizard
                 s.GitInstalled = true;
             }
             return s;
+        }
+
+        /// <summary>
+        /// Overrides an <see cref="ExternalState.InstalledLegacy"/> status to an actionable
+        /// migration when the detected legacy id is covered by a compound split group (e.g.
+        /// <c>com.psv.firebase.base</c> → Firebase Analytics/RemoteConfig adapters). Without this,
+        /// the Firebase Main-components row renders "Installed (legacy)" with no button — a dead
+        /// end, since the wrapper still provides the SDK under a split group the user has no way
+        /// to trigger from that row. <see cref="ComponentStatus.InstalledId"/> is left untouched
+        /// (already set to the legacy id by <see cref="FromExternal"/>) so Remove keeps targeting
+        /// it. No-op when <paramref name="e"/> isn't InstalledLegacy or no split group matches
+        /// (e.g. Tenjin's legacy wrapper, which has no split) — that case keeps the existing
+        /// "Installed (legacy)" / no-action behavior.
+        /// </summary>
+        internal static void PromoteLegacySplit(ComponentStatus s, ExternalScanResult e, ScanReport report)
+        {
+            if (s == null || e == null || report == null) return;
+            if (e.State != ExternalState.InstalledLegacy) return;
+            if (report.SplitGroups == null) return;
+
+            foreach (var g in report.SplitGroups)
+            {
+                if (g == null || g.LegacyId != e.DetectedLegacyId) continue;
+                s.Tone = "yellow";
+                s.StatusText = "Needs migration";
+                s.ActionText = "Migrate";
+                s.ActionVariant = "warn";
+                s.Actionable = true;
+                return;
+            }
         }
 
         private static ComponentStatus NotInCatalog(in (string Id, string Name, string Sub, string Logo) d)

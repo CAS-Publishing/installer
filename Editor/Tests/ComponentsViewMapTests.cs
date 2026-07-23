@@ -56,12 +56,24 @@ namespace PSV.Installer.Tests
             Assert.IsFalse(vm.RemoveEnabled);
         }
 
-        [Test] public void NeedsMigration_MapsToConnectToHub()
+        // Fix 1 (2026-07-23 firebase-migration-and-registry-fix): "Needs migration" is its own case
+        // now (split out from "Installed (manual)"/"Installed (git)") — its producers always set
+        // ComponentStatus.ActionText = "Migrate" (PackageState.LegacyUpm/LegacyAssets and the
+        // promoted split-group case), so the button label is "Migrate", not the generic
+        // "Connect to Hub". Dispatch (RowAction.ConnectToHub) is unchanged.
+        [Test] public void NeedsMigration_MapsToConnectToHub_WithMigrateLabel()
         {
-            var vm = ComponentsViewMap.Map(S("Needs migration", true), null);
+            var status = new ComponentStatus { StatusText = "Needs migration", Installed = true, ActionText = "Migrate" };
+            var vm = ComponentsViewMap.Map(status, null);
             Assert.AreEqual("Manual install", vm.StatusText);
             Assert.AreEqual(RowAction.ConnectToHub, vm.Action);
-            Assert.AreEqual("Connect to Hub", vm.ActionText);
+            Assert.AreEqual("Migrate", vm.ActionText);
+        }
+
+        [Test] public void NeedsMigration_MissingActionText_FallsBackToMigrateLabel()
+        {
+            var vm = ComponentsViewMap.Map(S("Needs migration", true), null);
+            Assert.AreEqual("Migrate", vm.ActionText);
         }
 
         [Test] public void InstalledGit_MapsToConnectToHub()

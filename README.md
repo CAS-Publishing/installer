@@ -49,7 +49,7 @@ automatically — you never edit `manifest.json` for the SDK components themselv
    com.psvgamestudio.installer
    ```
 
-   Leave the version field empty to get the latest (or type a version, e.g. `0.0.1-preview.35`).
+   Leave the version field empty to get the latest (or type a version, e.g. `0.0.1-preview.38`).
 
 #### A2 — Edit `manifest.json`
 
@@ -65,7 +65,7 @@ Add the registry and the dependency to `Packages/manifest.json` directly:
     }
   ],
   "dependencies": {
-    "com.psvgamestudio.installer": "0.0.1-preview.35"
+    "com.psvgamestudio.installer": "0.0.1-preview.38"
   }
 }
 ```
@@ -89,7 +89,7 @@ Omit the suffix to track the mirror's default branch (the latest release), or pi
 release with `#<version>`:
 
 ```
-https://github.com/CAS-Publishing/installer.git#0.0.1-preview.35
+https://github.com/CAS-Publishing/installer.git#0.0.1-preview.38
 ```
 
 #### B2 — Edit `manifest.json`
@@ -99,7 +99,7 @@ Add a git dependency (no `scopedRegistries` entry required):
 ```jsonc
 {
   "dependencies": {
-    "com.psvgamestudio.installer": "https://github.com/CAS-Publishing/installer.git#0.0.1-preview.35"
+    "com.psvgamestudio.installer": "https://github.com/CAS-Publishing/installer.git#0.0.1-preview.38"
   }
 }
 ```
@@ -123,20 +123,36 @@ below for what it does and how it's built.
 
 ## Using the installer
 
-Open it any time from the menu:
+The window is branded **CAS.AI Publishing Hub**. Open it any time from the menu:
 
 ```
-PSV Game Studio → Wizard
+CAS Hub → Open Hub
 ```
 
-The window is a tabbed wizard:
+(or `Assets → CleverAdsSolutions → Hub`; `Assets → CleverAdsSolutions → Hub (Restart Intro)` clears
+the per-project first-run flag and restarts the intro flow below.)
+
+### First run
+
+A brand-new project walks through a short intro flow, then never returns to it:
+
+1. **Ready** — a component picker (CAS SDK, Tenjin SDK, Firebase Analytics, EDM4U) with live
+   install state and an **Install** button that installs everything not already present.
+2. **Progress** — installs the components one at a time, surviving the domain reloads Unity
+   triggers between package installs.
+3. **Configuration** — see below.
+4. **Done** — a checklist confirming what's ready, with links back into **Components** or to
+   `https://cas.ai`.
+
+### Everyday tabs
+
+Once the intro is done, the window opens on three tabs:
 
 | Tab | What it does |
 |---|---|
-| **Welcome** | First-run setup. Enter the **CAS App ID** for the platform you're configuring — it defaults to the active build target (Android / iOS) and is switchable. The value is validated per platform (Android = bundle id, iOS = numeric) and written into the CAS settings once CAS is installed. Components are always installed via the **UPM scoped registry**. |
-| **Components** | The live catalog of PSV / CAS packages with per-row state (installed / update available / needs migration / installed via git). Install, update, migrate a legacy/manual copy to UPM, switch a git install to the registry, or refresh. |
-| **Configuration** | Per-platform readiness for the components you've installed, **scoped to the active build target**. Each cell opens that platform's settings. For CAS it also offers the **ad formats** (Banner / Interstitial / Rewarded / App Open) and an exclusive **Optimal / Children Ads** mediation choice (which also sets the audience) — all written straight into the CAS settings asset. |
-| **About** | Shows the installed installer version, checks the registry for a newer one, and **self-updates** in place. A red dot on the **About** tab means an update is available (checked once per session). |
+| **Components** | **Main components** (CAS SDK, Tenjin SDK, Firebase Analytics, EDM4U) plus an **Additional components** section listing catalog packages — including the `PSV Analytics (Firebase)` and `PSV Remote Config (Firebase)` adapters (shown only once `com.psv.core` is present) and `PSV Tenjin (Attribution)`. Each row's action is **Install** / **Update** / **Connect to Hub** (migrate a legacy, manual, or git install to UPM) / **Fix** (e.g. a missing scoped registry) / **Remove SDK**. A legacy `com.psv.firebase.base` install is offered a compound migration straight to native Firebase + its adapters, from either the Firebase row or an adapter row. Statuses refresh automatically after every action, or on demand via **Refresh**. |
+| **Configuration** | A read-only, per-platform (Android / iOS) readiness table for the components you've installed. Cells are clickable: CAS and Tenjin cells open **CAS.AI's own native settings window** (CAS ID, ad formats, mediation networks, and the Tenjin key all live there now — the installer no longer writes CAS settings itself), Firebase cells ping the existing config file or open a locate dialog when it's missing. Action panels below the table surface anything that still needs attention, and an Android build-templates banner offers a one-click **Enable** when gradle/manifest templates are missing. **Continue** unlocks once at least one platform is fully configured — most projects only ship on one. |
+| **About** | Shows the installed installer version, checks the registry for a newer one, and **self-updates** in place (UPM installs only — a git install updates by changing the `#<version>` tag in `manifest.json`). A red dot on the **About** tab means an update is available (checked once per session). |
 
 ### Updating the installer
 

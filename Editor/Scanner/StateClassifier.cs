@@ -107,6 +107,30 @@ namespace PSV.Installer.Scanner
                     return new PackageScanResult(record.Id, record.DisplayName,
                         PackageState.UpmCurrent, canonicalVersion, null, EmptyPaths);
 
+                // A semver dependency is only resolvable when a registered scope covers the id.
+                // record.Scopes (catalog) is authoritative when present; otherwise the id itself
+                // must be covered (exact or prefix scope). Mirrors ExternalState.ScopeMissing.
+                bool covered;
+                if (record.Scopes != null && record.Scopes.Count > 0)
+                {
+                    var anyExplicitScope = false;
+                    foreach (var scope in record.Scopes)
+                        if (!string.IsNullOrEmpty(scope) && manifest.HasRegisteredScope(scope))
+                        { anyExplicitScope = true; break; }
+                    // Fallback: an older catalog may have installed this id under an exact-id scope
+                    // before a newer catalog widened record.Scopes to a broader prefix — accept
+                    // coverage by id too, so the row doesn't flip to "Needs registry" on catalog update.
+                    covered = anyExplicitScope || manifest.HasScopeCovering(record.Id);
+                }
+                else
+                {
+                    covered = manifest.HasScopeCovering(record.Id);
+                }
+
+                if (!covered)
+                    return new PackageScanResult(record.Id, record.DisplayName,
+                        PackageState.ScopeMissing, canonicalVersion, null, EmptyPaths);
+
                 var state = ClassifyVersion(canonicalVersion, record.MinVersion, record.RecommendedVersion);
                 return new PackageScanResult(
                     record.Id, record.DisplayName,

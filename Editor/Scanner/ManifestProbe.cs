@@ -108,6 +108,24 @@ namespace PSV.Installer.Scanner
                         return true;
             return false;
         }
+
+        /// <summary>
+        /// True when any registered scoped-registry scope COVERS <paramref name="packageId"/> under
+        /// Unity's matching rule: the id equals the scope, or the scope is a dot-boundary prefix of
+        /// the id ("com.psvgamestudio" covers "com.psvgamestudio.analytics"; "com.psv" does not).
+        /// </summary>
+        public bool HasScopeCovering(string packageId)
+        {
+            if (string.IsNullOrEmpty(packageId)) return false;
+            foreach (var reg in ScopedRegistries)
+                foreach (var s in reg.Scopes)
+                {
+                    if (string.IsNullOrEmpty(s)) continue;
+                    if (string.Equals(packageId, s, StringComparison.OrdinalIgnoreCase)) return true;
+                    if (packageId.StartsWith(s + ".", StringComparison.OrdinalIgnoreCase)) return true;
+                }
+            return false;
+        }
     }
 
     /// <summary>One scoped-registry entry from manifest.json.</summary>

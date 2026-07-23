@@ -90,6 +90,11 @@ namespace PSV.Installer.Wizard
                 GetWindow<InstallerWizardWindow>()._router?.GoTo("ready");
         }
 
+        /// <summary>Top-level entry — testers looked for the Hub in the main menu bar, not under
+        /// Assets/CleverAdsSolutions (which reads as the ad-SDK settings menu). Same window.</summary>
+        [MenuItem("CAS Hub/Open Hub")]
+        public static void OpenFromMainMenu() => Open();
+
         /// <summary>
         /// Opens the wizard on the Configuration screen (the build-target watcher uses this when CAS
         /// is installed but the newly active platform's CAS id isn't configured yet). Does NOT clear

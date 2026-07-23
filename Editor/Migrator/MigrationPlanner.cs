@@ -127,7 +127,7 @@ namespace PSV.Installer.Migrator
                             warnOnFallback: result.State != PackageState.UpmCurrent))
                         continue; // git chain emitted; skip UPM planning for this component
                     var target = selection.GetTarget(result.Id);
-                    PlanForPackage(result, record, target, backups, removes, pkgAdds, removedIds);
+                    PlanForPackage(result, record, catalog, target, backups, removes, regAdds, pkgAdds, removedIds);
                 }
             }
 
@@ -224,9 +224,11 @@ namespace PSV.Installer.Migrator
         private static void PlanForPackage(
             PackageScanResult result,
             PackageRecord record,
+            PackageCatalog catalog,
             VersionTarget target,
             List<BackupAndDeletePath> backups,
             List<RemovePackage> removes,
+            List<MigrationAction> regAdds,
             List<MigrationAction> pkgAdds,
             HashSet<string> removedIds)
         {
@@ -238,7 +240,10 @@ namespace PSV.Installer.Migrator
             {
                 case PackageState.NotInstalled:
                     if (targetVersion != null)
+                    {
+                        EmitPackageRegistry(record, catalog, regAdds);
                         pkgAdds.Add(new AddPackage(result.Id, targetVersion));
+                    }
                     // If no version in catalog, nothing useful can be done — silently skip
                     // (record-less packages are unusual; a warning is skipped here as the
                     //  catalog author is responsible for version fields on PackageRecord).
@@ -251,7 +256,10 @@ namespace PSV.Installer.Migrator
                 case PackageState.UpmOutdated:
                 case PackageState.UpmBelowMin:
                     if (targetVersion != null)
+                    {
+                        EmitPackageRegistry(record, catalog, regAdds);
                         pkgAdds.Add(new UpdatePackageVersion(result.Id, targetVersion));
+                    }
                     break;
 
                 case PackageState.LegacyUpm:
@@ -259,7 +267,10 @@ namespace PSV.Installer.Migrator
                     if (!string.IsNullOrEmpty(result.DetectedLegacyNpmId))
                         AddRemove(result.DetectedLegacyNpmId, removes, removedIds);
                     if (targetVersion != null)
+                    {
+                        EmitPackageRegistry(record, catalog, regAdds);
                         pkgAdds.Add(new AddPackage(result.Id, targetVersion));
+                    }
                     break;
 
                 case PackageState.LegacyAssets:
@@ -269,7 +280,10 @@ namespace PSV.Installer.Migrator
                             if (!string.IsNullOrEmpty(path))
                                 backups.Add(new BackupAndDeletePath(path));
                     if (targetVersion != null)
+                    {
+                        EmitPackageRegistry(record, catalog, regAdds);
                         pkgAdds.Add(new AddPackage(result.Id, targetVersion));
+                    }
                     break;
 
                 case PackageState.Conflict:
@@ -282,7 +296,15 @@ namespace PSV.Installer.Migrator
                     if (!string.IsNullOrEmpty(result.DetectedLegacyNpmId))
                         AddRemove(result.DetectedLegacyNpmId, removes, removedIds);
                     if (targetVersion != null)
+                    {
+                        EmitPackageRegistry(record, catalog, regAdds);
                         pkgAdds.Add(new AddPackage(result.Id, targetVersion));
+                    }
+                    break;
+
+                case PackageState.ScopeMissing:
+                    // Dependency already in manifest but unresolvable — Fix adds only the scope.
+                    EmitPackageRegistry(record, catalog, regAdds);
                     break;
             }
         }
@@ -370,6 +392,32 @@ namespace PSV.Installer.Migrator
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Ensures the scoped registry for a catalog package before its AddPackage/Update action.
+        /// Scope comes from <c>record.Scopes</c>, defaulting to the package id itself (an exact-id
+        /// scope is always correct and never over-captures). No registry key configured → no action
+        /// (git installs and authoring gaps must not crash planning). ManifestWriter merges by URL,
+        /// so re-emitting for an existing registry block is idempotent.
+        /// </summary>
+        internal static void EmitPackageRegistry(
+            PackageRecord record, PackageCatalog catalog, List<MigrationAction> regAdds)
+        {
+            if (record == null || string.IsNullOrEmpty(record.Registry)) return;
+
+            string url = null;
+            if (catalog?.Registries != null && catalog.Registries.TryGetValue(record.Registry, out var mapped))
+                url = mapped;
+            if (string.IsNullOrEmpty(url)) url = record.Registry.Contains("://") ? record.Registry : null;
+            if (string.IsNullOrEmpty(url)) return;
+
+            var scopes = (record.Scopes != null && record.Scopes.Count > 0)
+                ? (IEnumerable<string>)record.Scopes
+                : new[] { record.Id };
+            foreach (var scope in scopes)
+                if (!string.IsNullOrEmpty(scope))
+                    regAdds.Add(new AddScopedRegistry(record.Registry, url, scope));
+        }
 
         /// <summary>
         /// Resolves the concrete version string for a package given the user's
