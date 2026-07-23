@@ -57,6 +57,12 @@ namespace PSV.Installer.Scanner
                     }
                 }
 
+                // Packages registered with the Package Manager — INCLUDING transitive dependencies
+                // (e.g. com.tenjin.sdk pulled in by the tenjin adapter), which are absent from
+                // manifest.json. Without this, a transitive package's loaded types trip the
+                // outside-UPM reflection signal and the SDK is misreported as installed manually.
+                var registeredVersions = CollectRegisteredUpmVersions();
+
                 foreach (var record in catalog.External)
                 {
                     if (record == null) continue;
@@ -75,7 +81,8 @@ namespace PSV.Installer.Scanner
                             AssetProbe.FindExisting(record.AssetRoots), record.AssetMarkers) ||
                         AssetInstallProbe.FindSignatureFiles(record.LegacyAssetFiles, record.AssetRoots).Count > 0;
 
-                    externals.Add(StateClassifier.Classify(record, manifest, outsideUpm));
+                    registeredVersions.TryGetValue(record.Id, out var registeredVersion);
+                    externals.Add(StateClassifier.Classify(record, manifest, outsideUpm, registeredVersion));
                 }
             }
 
@@ -158,6 +165,29 @@ namespace PSV.Installer.Scanner
         /// Backward-compatible: when <paramref name="uninstalls"/> is empty the XOR
         /// loop is a no-op and the resulting hash is identical to the pre-4a value.
         /// </summary>
+        /// <summary>
+        /// name → version of every package the Unity Package Manager has registered — direct AND
+        /// transitive dependencies alike (manifest.json only lists the direct ones). Best-effort:
+        /// enumeration failure degrades to an empty map (the scan then behaves as before this
+        /// signal existed) rather than failing the whole scan.
+        /// </summary>
+        private static Dictionary<string, string> CollectRegisteredUpmVersions()
+        {
+            var map = new Dictionary<string, string>();
+            try
+            {
+                foreach (var pkg in UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages())
+                    if (pkg != null && !string.IsNullOrEmpty(pkg.name))
+                        map[pkg.name] = pkg.version;
+            }
+            catch (Exception e)
+            {
+                UnityEngine.Debug.LogWarning(
+                    $"[CAS Hub] Could not enumerate registered packages: {e.Message}");
+            }
+            return map;
+        }
+
         private static string ComputeHash(
             IReadOnlyList<PackageScanResult> packages,
             IReadOnlyList<ExternalScanResult> externals,

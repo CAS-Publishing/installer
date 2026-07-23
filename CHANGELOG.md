@@ -2,6 +2,15 @@
 
 All notable changes to this package will be documented in this file.
 
+## [0.0.1-preview.39] - 2026-07-23
+
+- **Transitive UPM packages are no longer mistaken for manual installs.** A package registered with
+  the Package Manager as a transitive dependency (e.g. `com.tenjin.sdk` arriving via the
+  `com.psvgamestudio.tenjin` adapter) is absent from `manifest.json`, but its loaded types tripped
+  the manual-install detection — the row showed "Manual install" and Connect to Hub dead-ended with
+  "known folders weren't found under Assets/". The scanner now checks the Package Manager's
+  registered-package list (direct and transitive) and reports such packages as installed via UPM.
+
 ## [0.0.1-preview.38] - 2026-07-23
 
 - **Scoped registries are emitted for catalog packages when the installer is installed via git URL.**

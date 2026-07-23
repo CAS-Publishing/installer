@@ -156,10 +156,16 @@ namespace PSV.Installer.Scanner
         /// <see cref="ExternalState.InstalledOutsideUpm"/> instead of NotInstalled so the hub
         /// won't offer an Install that duplicates it.
         /// </summary>
+        /// <param name="registeredUpmVersion">Version of this package registered with the Unity
+        /// Package Manager (direct OR transitive — e.g. com.tenjin.sdk pulled in by the tenjin
+        /// adapter), or null when not registered. A registered package is a valid UPM install even
+        /// when absent from manifest.json, and its loaded types must NOT be mistaken for a manual
+        /// Assets/ copy (the "installed manually, but its known folders weren't found" dead end).</param>
         public static ExternalScanResult Classify(
             ExternalRecord record,
             ManifestData manifest,
-            bool detectedOutsideUpm = false)
+            bool detectedOutsideUpm = false,
+            string registeredUpmVersion = null)
         {
             var deps = manifest.Dependencies;
 
@@ -181,6 +187,15 @@ namespace PSV.Installer.Scanner
                                 legacyId);
                     }
                 }
+
+                // Registered with the Package Manager (transitively, e.g. via an adapter's
+                // dependency) → a real UPM install. Checked BEFORE the outside-UPM signal: the
+                // loaded types that trip that signal are the registered package's own assemblies.
+                if (!string.IsNullOrEmpty(registeredUpmVersion))
+                    return new ExternalScanResult(
+                        record.Id, record.DisplayName,
+                        ExternalState.UpmCurrent,
+                        registeredUpmVersion);
 
                 // Manifest is the source of truth for UPM; if a non-UPM copy is on disk, surface it.
                 if (detectedOutsideUpm)

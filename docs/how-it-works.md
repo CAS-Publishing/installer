@@ -1,8 +1,8 @@
 # PSV Game Studio Installer — как это работает
 
 > Внутренний документ для презентации и утверждения функционала перед публикацией.
-> Версия инсталлера: `com.psvgamestudio.installer` **0.0.1-preview.38**, каталог метаданных
-> `com.psvgamestudio.installer.metadata` **0.0.2-preview.27**. Только Editor, Unity 2022.3+.
+> Версия инсталлера: `com.psvgamestudio.installer` **0.0.1-preview.39**, каталог метаданных
+> `com.psvgamestudio.installer.metadata` **0.0.2-preview.28**. Только Editor, Unity 2022.3+.
 
 ---
 
@@ -281,4 +281,4 @@ Tenjin — `CAS-Publishing/tenjin-sdk`; Firebase — `CAS-Publishing/firebase-an
 
 ---
 
-*Документ описывает поведение на момент инсталлера 0.0.1-preview.38 / каталога 0.0.2-preview.27.*
+*Документ описывает поведение на момент инсталлера 0.0.1-preview.39 / каталога 0.0.2-preview.28.*
